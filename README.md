@@ -15,6 +15,13 @@ fermée par défaut. La connexion est freinée au-delà de 5 mots de passe faux 
 Installée sur l'écran d'accueil de l'iPhone (Safari → Partager → Sur l'écran
 d'accueil), elle s'ouvre en plein écran grâce au manifeste (`app/manifest.ts`).
 
+## Design
+
+Maquettes et direction graphique sur Figma (équipe TomaGrafik) :
+https://www.figma.com/file/i3UlHOZ4pjOneQwEP7uqxs?node-id=1:129
+
+L'habillage actuel est provisoire, en attendant le choix de la direction.
+
 ## Stack
 
 - **Next.js 16** (App Router) + React 19 + TypeScript
