@@ -37,6 +37,7 @@ directement les valeurs sombres, et `:root` déclare `color-scheme: dark`.
 
 ## Publication
 
-`main` est déployée en production par Vercel. Les vérifications
-(`npm run typecheck`, `npm test`, `npm run build`) se font avant le push, pas
-après.
+**Tout part directement sur `main`**, qui est déployée en production par
+Vercel. Pas de branche de travail qui traîne, pas de pull request en attente
+de validation. Les vérifications (`npm run typecheck`, `npm test`,
+`npm run build`) se font avant le push, pas après.
