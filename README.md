@@ -1,5 +1,7 @@
 # Genki
 
+**En ligne :** https://genki-eight.vercel.app
+
 Application personnelle de sport : métronome de course, bibliothèque
 d'exercices, programmes à timers enchaînés, mode séance et suivi. Les
 spécifications sont dans le doc « Spécifications – Genki (web / PWA) ».
