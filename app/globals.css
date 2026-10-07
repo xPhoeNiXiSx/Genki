@@ -1,0 +1,156 @@
+/* ==========================================================================
+   Genki — habillage provisoire
+   Neutre en attendant le choix de la direction graphique : gris sombres et
+   un seul accent. Tout passe par les variables de `:root`, pour que la
+   direction retenue se pose ici sans toucher aux composants.
+   ========================================================================== */
+
+/* Thème unique : sombre. Pas de variante claire, pas de
+   `prefers-color-scheme` à suivre. */
+:root {
+  color-scheme: dark;
+
+  --bg: #111214;
+  --surface: #1b1c20;
+  --border: #2c2e34;
+
+  --fg: #f2f3f5;
+  --fg-muted: #a3a6ae;
+
+  --accent: #e8e9ec;
+  --on-accent: #111214;
+
+  --negative: #ff8a8a;
+
+  --radius: 14px;
+
+  --font-body: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  -webkit-text-size-adjust: 100%;
+}
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 24px) 16px
+    calc(env(safe-area-inset-bottom) + 32px);
+}
+
+.page-title {
+  font-size: 28px;
+  margin: 8px 0 20px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+.hint {
+  color: var(--fg-muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.error {
+  color: var(--negative);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+
+input {
+  font: inherit;
+  /* 16px minimum : en dessous, iOS zoome sur le champ au toucher. */
+  font-size: 16px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+a {
+  color: var(--fg);
+}
+
+code {
+  font-size: 14px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
