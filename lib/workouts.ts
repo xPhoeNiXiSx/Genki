@@ -103,3 +103,30 @@ export async function weeklyTotals(weeks: number, now = new Date()): Promise<Wee
     sessions: Number(row.sessions),
   }));
 }
+
+export type DayTotal = {
+  /** « AAAA-MM-JJ », heure de Paris. */
+  day: string;
+  seconds: number;
+};
+
+/** Temps d'entraînement de chaque jour de la semaine en cours, du lundi au dimanche. */
+export async function dailyTotals(now = new Date()): Promise<DayTotal[]> {
+  const rows = await query<{ day: string; seconds: number | string }>(
+    `with bounds as (
+       select date_trunc('week', ($1::timestamptz at time zone '${TIME_ZONE}'))::date as monday
+     ),
+     days as (
+       select (monday + n)::date as day from bounds, generate_series(0, 6) as n
+     )
+     select to_char(days.day, 'YYYY-MM-DD') as day,
+            coalesce(sum(w.duration_seconds), 0) as seconds
+       from days
+       left join workout_sessions w
+         on (w.started_at at time zone '${TIME_ZONE}')::date = days.day
+      group by days.day
+      order by days.day`,
+    [now.toISOString()],
+  );
+  return rows.map((row) => ({ day: row.day, seconds: Number(row.seconds) }));
+}

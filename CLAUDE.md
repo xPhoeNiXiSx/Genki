@@ -21,11 +21,20 @@ d'éléments d'interface.
 Les corrections de bugs visuels (débordement, texte tronqué, contraste
 illisible) ne sont pas concernées : elles se corrigent directement.
 
-## Thème
+## Thème et direction graphique
 
-**Sombre uniquement.** Pas de thème clair à maintenir, pas de
-`prefers-color-scheme` à suivre. Les variables de `app/globals.css` portent
-directement les valeurs sombres, et `:root` déclare `color-scheme: dark`.
+**Clair uniquement**, direction « Soleil × Piste » (proposition 4 des
+maquettes Figma) : papier `#F3F2EB`, encre `#1A1A1D`, un seul accent, le jaune
+volt `#D7FF3E`. Pas de thème sombre, pas de `prefers-color-scheme` à suivre.
+Les variables vivent dans `app/globals.css`, `:root` déclare
+`color-scheme: light`.
+
+Polices : Dela Gothic One (titres, grands chiffres, katakana), Zen Kaku
+Gothic New (texte), DM Mono (numéros, dates, durées).
+
+La planche anatomique (`lib/anatomy.ts`, rendue par `app/ui/body-map.tsx`)
+range chaque tracé sous une clé de `lib/muscles.ts` : un nouveau groupe
+musculaire doit y recevoir son tracé.
 
 ## Règles techniques
 

@@ -35,7 +35,10 @@ import {
   parseProgramForm,
   updateProgram,
 } from "../lib/programs";
-import { listWorkouts, recordWorkout, weeklyTotals } from "../lib/workouts";
+import { dailyTotals, listWorkouts, recordWorkout, weeklyTotals } from "../lib/workouts";
+import { BACK, FRONT, bestView } from "../lib/anatomy";
+import { MUSCLES } from "../lib/muscles";
+import { bibDate, sinceLabel } from "../lib/dates";
 import { formatClock, formatLength, parseDuration } from "../lib/duration";
 import { normalizeMuscles } from "../lib/muscles";
 import {
@@ -221,6 +224,12 @@ async function workouts() {
   ]);
   ok("les totaux par semaine suivent l'heure de Paris et montrent les semaines vides");
 
+  const daily = await dailyTotals(now);
+  assert.equal(daily.length, 7);
+  assert.equal(daily[0].day, "2026-10-05");
+  assert.deepEqual(daily.map((d) => d.seconds), [120, 600, 0, 0, 0, 0, 0]);
+  ok("les totaux par jour couvrent la semaine en cours, du lundi au dimanche, heure de Paris");
+
   const list = await listWorkouts();
   assert.equal(list[0].programName, program.name);
   assert.equal(list[0].durationSeconds, 600);
@@ -294,6 +303,16 @@ function pureLogic() {
   clock = seek(clock, 61_000, 30_000);
   assert.equal(elapsed(clock, 62_000), 31_000);
   ok("l'horloge de séance gère pause, reprise et saut d'étape");
+
+  for (const { key } of MUSCLES) assert.ok(FRONT[key] || BACK[key], `muscle absent de la planche : ${key}`);
+  assert.equal(bestView(["fessiers", "ischio-jambiers"]), "dos");
+  assert.equal(bestView(["quadriceps", "fessiers"]), "face");
+  ok("chaque groupe musculaire figure sur la planche, et la meilleure vue est choisie");
+
+  assert.equal(bibDate(new Date("2026-10-06T22:30:00Z")), "MER. 07/10");
+  assert.equal(sinceLabel(new Date("2026-10-06T08:00:00Z"), new Date("2026-10-07T08:00:00Z")), "HIER");
+  assert.equal(sinceLabel(null), "JAMAIS FAIT");
+  ok("les dates de dossard et d'historique suivent l'heure de Paris");
 
   assert.equal(clampBpm(500), 240);
   assert.equal(clampBpm(Number.NaN), 180);

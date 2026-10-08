@@ -20,7 +20,9 @@ d'accueil), elle s'ouvre en plein écran grâce au manifeste (`app/manifest.ts`)
 Maquettes et direction graphique sur Figma (équipe TomaGrafik) :
 https://www.figma.com/file/i3UlHOZ4pjOneQwEP7uqxs?node-id=1:129
 
-L'habillage actuel est provisoire, en attendant le choix de la direction.
+Direction retenue : proposition 4, « Soleil × Piste » (page « 4 · Écrans » du
+fichier Figma de propositions, équipe A5SYS) :
+https://www.figma.com/design/cgqGjiQR8rAWOPNQ7aBbbw
 
 ## Stack
 

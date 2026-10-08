@@ -1,6 +1,16 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Mono, Dela_Gothic_One, Zen_Kaku_Gothic_New } from "next/font/google";
 
 import "./globals.css";
+
+/**
+ * Trois familles : Dela Gothic One pour les titres et les grands chiffres
+ * (elle porte aussi les katakana), Zen Kaku Gothic pour le texte, DM Mono
+ * pour les numéros de dossard, les dates et les durées.
+ */
+const display = Dela_Gothic_One({ weight: "400", subsets: ["latin"], variable: "--font-display", display: "swap" });
+const body = Zen_Kaku_Gothic_New({ weight: ["500", "700", "900"], subsets: ["latin"], variable: "--font-body", display: "swap" });
+const mono = DM_Mono({ weight: ["400", "500"], subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Genki",
@@ -9,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Genki",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
   // Les versions d'iOS antérieures à 16.4 ne lisent que la variante préfixée :
   // sans elle, le raccourci rouvre le site dans Safari.
@@ -19,19 +29,15 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#111214",
+  themeColor: "#f3f2eb",
   // Laisse la page occuper toute la dalle ; les encoches sont absorbées par
   // les `env(safe-area-inset-*)` du CSS.
   viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
+    <html lang="fr" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>{children}</body>
     </html>
   );

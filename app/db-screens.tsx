@@ -1,50 +1,63 @@
-/** Écrans d'attente partagés par les pages qui lisent la base. */
+import Link from "next/link";
+import { connection } from "next/server";
 
-export function SetupScreen({ missing }: { missing: string[] }) {
-  return (
-    <main className="page">
-      <h1 className="page-title">Genki</h1>
-      <div className="panel">
-        <h2>Configuration incomplète</h2>
-        <p className="hint">
-          Il manque {missing.length > 1 ? "ces variables" : "cette variable"}{" "}
-          d&apos;environnement côté Vercel :
-        </p>
-        <ul className="hint">
-          {missing.map((name) => (
-            <li key={name}>
-              <code>{name}</code>
-            </li>
-          ))}
-        </ul>
-        <p className="hint">
-          Settings → Environment Variables, puis redéploie. Le détail est dans
-          le README.
-        </p>
-      </div>
-    </main>
-  );
-}
-
-export function DatabaseErrorScreen({ message }: { message: string }) {
-  return (
-    <main className="page">
-      <h1 className="page-title">Genki</h1>
-      <div className="panel">
-        <h2>Base injoignable</h2>
-        <p className="hint">{message}</p>
-        <p className="hint">
-          Vérifie <code>DATABASE_URL</code> dans les variables
-          d&apos;environnement Vercel, puis redéploie.
-        </p>
-      </div>
-    </main>
-  );
-}
+import { isSchemaReady } from "@/lib/db";
 
 /** Variables d'environnement manquantes, dans l'ordre où les poser. */
 export function missingEnv(): string[] {
-  return ["DATABASE_URL", "APP_PASSWORD", "AUTH_SECRET"].filter(
-    (name) => !process.env[name],
+  return ["DATABASE_URL", "APP_PASSWORD", "AUTH_SECRET"].filter((name) => !process.env[name]);
+}
+
+function Notice({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <main className="screen bare">
+      <p className="logo">genki</p>
+      <h1 className="display title">{title}</h1>
+      <div className="galet" style={{ marginTop: 20, display: "grid", gap: 10 }}>
+        {children}
+      </div>
+    </main>
+  );
+}
+
+/**
+ * À appeler en tête de chaque page qui lit la base. Renvoie l'écran à
+ * afficher si la base n'est pas prête, `null` sinon.
+ */
+export async function databaseBlocker(): Promise<React.ReactElement | null> {
+  // Lu à chaque visite : l'état de la base ne doit pas être figé au build.
+  await connection();
+
+  const missing = missingEnv();
+  if (missing.length > 0) {
+    return (
+      <Notice title="Configuration incomplète">
+        <p style={{ margin: 0 }}>
+          Il manque {missing.length > 1 ? "ces variables" : "cette variable"} d&apos;environnement côté Vercel :
+        </p>
+        <p className="mono" style={{ margin: 0 }}>{missing.join(" · ")}</p>
+        <p className="muted" style={{ margin: 0 }}>Settings → Environment Variables, puis redéploie.</p>
+      </Notice>
+    );
+  }
+
+  try {
+    if (await isSchemaReady()) return null;
+  } catch (error) {
+    return (
+      <Notice title="Base injoignable">
+        <p className="mono" style={{ margin: 0, fontSize: 12 }}>{String(error)}</p>
+        <p className="muted" style={{ margin: 0 }}>Vérifie DATABASE_URL dans les variables Vercel, puis redéploie.</p>
+      </Notice>
+    );
+  }
+
+  return (
+    <Notice title="Base à initialiser">
+      <p style={{ margin: 0 }}>
+        Ouvre <Link href="/compte" style={{ textDecoration: "underline" }}>Mon compte</Link> et lance{" "}
+        <strong>Appliquer les migrations</strong>.
+      </p>
+    </Notice>
   );
 }

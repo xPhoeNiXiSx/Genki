@@ -12,10 +12,10 @@ export function LoginForm({ next }: { next: string }) {
   );
 
   return (
-    <form action={action} className="panel form">
+    <form action={action} className="form" style={{ marginTop: 24 }}>
       <input type="hidden" name="next" value={next} />
 
-      <label>
+      <label className="field">
         Mot de passe
         <input
           type="password"
@@ -28,7 +28,7 @@ export function LoginForm({ next }: { next: string }) {
 
       {state.error ? <p className="error">{state.error}</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="btn wide" disabled={pending}>
         {pending ? (
           <>
             <Spinner />
