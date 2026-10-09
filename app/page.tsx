@@ -8,6 +8,7 @@ import { dailyTotals } from "@/lib/workouts";
 import { databaseBlocker } from "./db-screens";
 import { Icon, type IconName } from "./ui/icons";
 import { Lanes } from "./ui/lanes";
+import { Logo } from "./ui/logo";
 import { TabBar } from "./ui/tab-bar";
 import { WeekSuns } from "./ui/week-suns";
 
@@ -36,8 +37,9 @@ export default async function HomePage() {
       <p className="katakana" aria-hidden="true">ゲンキ</p>
 
       <header>
-        <Link href="/compte" className="logo" aria-label="genki — mon compte">genki</Link>
-        <span className="logo-sub">元気 · la forme</span>
+        <Link href="/compte" aria-label="Genki — mon compte">
+          <Logo />
+        </Link>
       </header>
 
       <h1 className="display" style={{ fontSize: 38, marginTop: 22 }}>Bonjour</h1>

@@ -3,6 +3,8 @@ import { connection } from "next/server";
 
 import { isSchemaReady } from "@/lib/db";
 
+import { Logo } from "./ui/logo";
+
 /** Variables d'environnement manquantes, dans l'ordre où les poser. */
 export function missingEnv(): string[] {
   return ["DATABASE_URL", "APP_PASSWORD", "AUTH_SECRET"].filter((name) => !process.env[name]);
@@ -11,7 +13,7 @@ export function missingEnv(): string[] {
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main className="screen bare">
-      <p className="logo">genki</p>
+      <Logo />
       <h1 className="display title">{title}</h1>
       <div className="galet" style={{ marginTop: 20, display: "grid", gap: 10 }}>
         {children}
