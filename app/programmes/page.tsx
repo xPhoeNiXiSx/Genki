@@ -19,7 +19,7 @@ export default async function ProgramsPage() {
   return (
     <main className="screen">
       <Lanes />
-      <Link href="/programmes/nouveau" className="round volt" aria-label="Créer un programme" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24 }}>
+      <Link href="/programmes/nouveau" className="round volt" aria-label="Créer un programme" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
         <Icon name="plus" size={20} />
       </Link>
       <h1 className="display title">Programmes</h1>

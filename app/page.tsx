@@ -34,7 +34,7 @@ export default async function HomePage() {
   return (
     <main className="screen">
       <Lanes />
-      <Link href="/compte" className="round" aria-label="Réglages" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24 }}>
+      <Link href="/compte" className="round" aria-label="Réglages" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
         <Icon name="settings" size={20} />
       </Link>
       <p className="katakana" aria-hidden="true" style={{ right: 78, fontSize: 44 }}>ゲンキ</p>

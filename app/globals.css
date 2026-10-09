@@ -111,6 +111,7 @@ textarea {
   font-size: 50px;
   line-height: 1;
   letter-spacing: -2px;
+  pointer-events: none;
 }
 
 /* --- Typographie ---------------------------------------------------------- */
