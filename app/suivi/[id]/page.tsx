@@ -9,6 +9,7 @@ import { getWorkout } from "@/lib/workouts";
 import { databaseBlocker } from "../../db-screens";
 import { Icon } from "../../ui/icons";
 import { Lanes } from "../../ui/lanes";
+import { ConfirmDelete } from "../../ui/confirm-delete";
 import { StepRow } from "../../ui/step-row";
 import { deleteWorkoutAction } from "../actions";
 
@@ -40,12 +41,18 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
         <Link href="/suivi" className="round" aria-label="Retour au suivi"><Icon name="back" size={20} /></Link>
         <details style={{ position: "relative" }}>
           <summary className="round" aria-label="Plus d'actions" style={{ listStyle: "none" }}><Icon name="more" size={20} /></summary>
-          <form action={deleteWorkoutAction} className="galet" style={{ position: "absolute", right: 0, top: 52, zIndex: 20, padding: 8, minWidth: 230, borderRadius: 20, boxShadow: "0 10px 24px rgba(26,26,29,.15)" }}>
-            <input type="hidden" name="id" value={workout.id} />
-            <button type="submit" className="setting-row" style={{ minHeight: 44, padding: "8px 12px", color: "var(--danger)" }}>
+          <div className="galet" style={{ position: "absolute", right: 0, top: 52, zIndex: 20, padding: 8, minWidth: 230, borderRadius: 20, boxShadow: "0 10px 24px rgba(26,26,29,.15)" }}>
+            <ConfirmDelete
+              action={deleteWorkoutAction}
+              fields={{ id: workout.id }}
+              title="Supprimer cette séance du carnet ?"
+              message="Elle disparaît du suivi et des statistiques, définitivement."
+              className="setting-row"
+              style={{ minHeight: 44, padding: "8px 12px", color: "var(--danger)" }}
+            >
               <span style={{ fontWeight: 700 }}>Supprimer la séance</span> <Icon name="trash" size={18} />
-            </button>
-          </form>
+            </ConfirmDelete>
+          </div>
         </details>
       </div>
 

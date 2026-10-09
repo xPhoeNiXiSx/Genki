@@ -24,6 +24,7 @@ import {
 
 import { BodyMap } from "../ui/body-map";
 import { CatalogPicker } from "../ui/catalog-picker";
+import { ConfirmDelete } from "../ui/confirm-delete";
 import { Icon } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
 import { StepRow } from "../ui/step-row";
@@ -350,9 +351,16 @@ export function ProgramEditor({
         {pending ? <Spinner /> : <Icon name="check" size={20} />} {pending ? "Enregistrement…" : "Enregistrer la séance"}
       </button>
       {program ? (
-        <button type="submit" formAction={deleteProgramAction} className="btn" style={{ background: "transparent", color: "var(--grey)", width: "100%", marginTop: 6 }}>
+        <ConfirmDelete
+          nested
+          action={deleteProgramAction}
+          title={`Supprimer « ${program.name} » ?`}
+          message="La séance et ses étapes sont supprimées définitivement. L'historique du suivi est conservé."
+          className="btn"
+          style={{ background: "transparent", color: "var(--grey)", width: "100%", marginTop: 6 }}
+        >
           <Icon name="trash" size={18} /> Supprimer la séance
-        </button>
+        </ConfirmDelete>
       ) : null}
 
       {sheet ? (

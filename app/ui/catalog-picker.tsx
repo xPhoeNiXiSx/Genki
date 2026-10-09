@@ -36,6 +36,8 @@ export function CatalogPicker({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Entrée dont la suppression attend confirmation.
+  const [doomed, setDoomed] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function run(change: CatalogChange, after?: () => void) {
@@ -113,9 +115,7 @@ export function CatalogPicker({
                     disabled={entry.uses > 0 || pending}
                     style={entry.uses > 0 ? { opacity: 0.3 } : { color: "var(--danger)" }}
                     aria-label={entry.uses > 0 ? `${entry.name} est utilisé, impossible de le supprimer` : `Supprimer ${entry.name}`}
-                    onClick={() => run({ op: "delete", name: entry.name }, () => {
-                      if (value === entry.name) onChange(null);
-                    })}
+                    onClick={() => setDoomed(entry.name)}
                   >
                     <Icon name="trash" size={16} />
                   </button>
@@ -155,6 +155,33 @@ export function CatalogPicker({
 
             <button type="button" className="btn wide" style={{ marginTop: 20 }} onClick={() => setOpen(false)}>
               <Icon name="check" size={20} /> Terminé
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {doomed !== null ? (
+        <div className="sheet-veil" onClick={() => setDoomed(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label={`Supprimer ${doomed}`}>
+            <h2 className="display" style={{ fontSize: 22 }}>Supprimer « {doomed} » ?</h2>
+            <p className="muted" style={{ margin: "8px 0 0" }}>Aucune fiche ne l&apos;utilise : elle est simplement retirée de la liste.</p>
+            <button
+              type="button"
+              className="btn wide"
+              style={{ marginTop: 20, background: "var(--danger)", borderColor: "var(--danger)", color: "var(--white)" }}
+              disabled={pending}
+              onClick={() => {
+                const name = doomed;
+                setDoomed(null);
+                run({ op: "delete", name }, () => {
+                  if (value === name) onChange(null);
+                });
+              }}
+            >
+              <Icon name="trash" size={18} /> Supprimer
+            </button>
+            <button type="button" className="btn" style={{ background: "transparent", color: "var(--ink)", width: "100%", marginTop: 6 }} onClick={() => setDoomed(null)}>
+              Annuler
             </button>
           </div>
         </div>

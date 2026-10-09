@@ -8,6 +8,7 @@ import { getProgram, listPrograms, stepBlocks, totalSeconds } from "@/lib/progra
 import { databaseBlocker } from "../../db-screens";
 import { Icon } from "../../ui/icons";
 import { Lanes } from "../../ui/lanes";
+import { ConfirmDelete } from "../../ui/confirm-delete";
 import { StepRow } from "../../ui/step-row";
 import { deleteProgramAction, duplicateProgramAction } from "../actions";
 
@@ -45,12 +46,16 @@ export default async function ProgramPage({ params }: { params: Promise<{ id: st
                 <span style={{ fontWeight: 700 }}>Dupliquer</span> <Icon name="copy" size={18} />
               </button>
             </form>
-            <form action={deleteProgramAction}>
-              <input type="hidden" name="id" value={program.id} />
-              <button type="submit" className="setting-row" style={{ minHeight: 44, padding: "8px 12px", color: "var(--danger)" }}>
-                <span style={{ fontWeight: 700 }}>Supprimer</span> <Icon name="trash" size={18} />
-              </button>
-            </form>
+            <ConfirmDelete
+              action={deleteProgramAction}
+              fields={{ id: program.id }}
+              title={`Supprimer « ${program.name} » ?`}
+              message="La séance et ses étapes sont supprimées définitivement. L'historique du suivi est conservé."
+              className="setting-row"
+              style={{ minHeight: 44, padding: "8px 12px", color: "var(--danger)" }}
+            >
+              <span style={{ fontWeight: 700 }}>Supprimer</span> <Icon name="trash" size={18} />
+            </ConfirmDelete>
           </div>
         </details>
       </div>
