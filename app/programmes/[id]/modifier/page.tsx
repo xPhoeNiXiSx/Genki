@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { listCatalog } from "@/lib/catalog";
 import { listExercises } from "@/lib/exercises";
 import { getProgram } from "@/lib/programs";
 
@@ -13,8 +14,13 @@ export default async function EditProgramPage({ params }: { params: Promise<{ id
   if (blocked) return blocked;
 
   const { id } = await params;
-  const [program, exercises] = await Promise.all([UUID.test(id) ? getProgram(id) : null, listExercises()]);
+  // Exercices désactivés compris : une étape existante doit rester lisible.
+  const [program, exercises, categories] = await Promise.all([
+    UUID.test(id) ? getProgram(id) : null,
+    listExercises({ inactive: true }),
+    listCatalog("program_category"),
+  ]);
   if (!program) notFound();
 
-  return <ProgramEditor program={program} exercises={exercises} />;
+  return <ProgramEditor program={program} exercises={exercises} categories={categories} />;
 }

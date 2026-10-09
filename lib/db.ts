@@ -64,11 +64,11 @@ export async function runMigrations(): Promise<void> {
  */
 export async function isSchemaReady(): Promise<boolean> {
   const rows = await query<{ present: boolean }>(
-    `select to_regclass('public.settings') is not null
+    `select to_regclass('public.catalog') is not null
             and exists (select 1 from information_schema.columns
                          where table_schema = 'public'
-                           and table_name = 'workout_sessions'
-                           and column_name = 'steps_total') as present`,
+                           and table_name = 'exercises'
+                           and column_name = 'active') as present`,
   );
   return rows[0]?.present === true;
 }

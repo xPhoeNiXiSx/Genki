@@ -1,8 +1,12 @@
 import { query } from "@/lib/db";
+import { MAX_STEP_SECONDS } from "@/lib/duration";
 import { normalizeMuscles, type MuscleKey } from "@/lib/muscles";
 
-/** Catégories proposées à la saisie. D'autres restent acceptées. */
-export const SUGGESTED_CATEGORIES = ["Musculaire", "Endurance", "Course à pied"];
+/** Un exercice se mesure au temps (secondes) ou aux répétitions. */
+export const MEASURES = ["time", "reps"] as const;
+export type Measure = (typeof MEASURES)[number];
+
+export const MAX_REPS = 500;
 
 export type Exercise = {
   id: string;
@@ -12,9 +16,13 @@ export type Exercise = {
   category: string;
   equipment: string | null;
   muscles: MuscleKey[];
+  measure: Measure;
+  /** Durée en secondes ou nombre de répétitions proposé, selon la mesure. */
+  target: number | null;
+  active: boolean;
 };
 
-export type ExerciseInput = Omit<Exercise, "id">;
+export type ExerciseInput = Omit<Exercise, "id" | "active">;
 
 type Row = {
   id: string;
@@ -24,6 +32,9 @@ type Row = {
   category: string;
   equipment: string | null;
   muscles: string[];
+  measure: string;
+  target: number | null;
+  active: boolean;
 };
 
 function fromRow(row: Row): Exercise {
@@ -35,6 +46,9 @@ function fromRow(row: Row): Exercise {
     category: row.category,
     equipment: row.equipment,
     muscles: normalizeMuscles(row.muscles),
+    measure: row.measure === "reps" ? "reps" : "time",
+    target: row.target,
+    active: row.active,
   };
 }
 
@@ -75,26 +89,80 @@ export function parseExerciseForm(
     .getAll("muscles")
     .filter((value): value is string => typeof value === "string");
 
+  const measure: Measure = form.get("measure") === "reps" ? "reps" : "time";
+  const rawTarget = blankToNull(form.get("target"));
+  const target = rawTarget === null ? null : Number(rawTarget);
+  if (target !== null && (!Number.isInteger(target) || target <= 0)) {
+    return { error: measure === "reps" ? "Nombre de répétitions invalide." : "Durée invalide." };
+  }
+  if (target !== null && measure === "reps" && target > MAX_REPS) {
+    return { error: `Pas plus de ${MAX_REPS} répétitions.` };
+  }
+  if (target !== null && measure === "time" && target > MAX_STEP_SECONDS) {
+    return { error: "Une durée ne dépasse pas 3 heures." };
+  }
+
   return {
     input: {
       name,
       category,
       imageUrl,
       description: blankToNull(form.get("description")),
-      // « Autre matériel », saisi en clair, l'emporte sur les pastilles.
-      equipment: blankToNull(form.get("equipmentOther")) ?? blankToNull(form.get("equipment")),
+      equipment: blankToNull(form.get("equipment")),
       muscles: normalizeMuscles(muscles),
+      measure,
+      target,
     },
   };
 }
 
-const COLUMNS = `id, name, description, image_url, category, equipment, muscles`;
+const COLUMNS = `id, name, description, image_url, category, equipment, muscles, measure, target, active`;
 
-export async function listExercises(): Promise<Exercise[]> {
+/** Par défaut, les exercices désactivés sont tenus à l'écart. */
+export async function listExercises({ inactive = false }: { inactive?: boolean } = {}): Promise<Exercise[]> {
   const rows = await query<Row>(
-    `select ${COLUMNS} from exercises order by category, lower(name)`,
+    `select ${COLUMNS} from exercises
+      where active or $1
+      order by category, lower(name)`,
+    [inactive],
   );
   return rows.map(fromRow);
+}
+
+/** Nombre d'exercices désactivés, pour proposer de les afficher. */
+export async function countInactiveExercises(): Promise<number> {
+  const rows = await query<{ n: number | string }>(`select count(*) as n from exercises where not active`);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Noms des séances qui utilisent l'exercice. */
+export async function exerciseUsage(id: string): Promise<string[]> {
+  const rows = await query<{ name: string }>(
+    `select distinct p.name
+       from program_steps s join programs p on p.id = s.program_id
+      where s.exercise_id = $1
+      order by p.name`,
+    [id],
+  );
+  return rows.map((row) => row.name);
+}
+
+export async function setExerciseActive(id: string, active: boolean): Promise<void> {
+  await query(`update exercises set active = $2, updated_at = now() where id = $1`, [id, active]);
+}
+
+/**
+ * Catégorie et matériel s'ajoutent à leur liste s'ils n'y figurent pas
+ * encore : une fiche n'emploie que des valeurs que l'on peut gérer.
+ */
+async function rememberCatalog(input: ExerciseInput): Promise<void> {
+  await query(
+    `insert into catalog (kind, name)
+     select 'exercise_category', $1::text
+     union all select 'equipment', $2::text where $2::text is not null
+     on conflict do nothing`,
+    [input.category, input.equipment],
+  );
 }
 
 export async function getExercise(id: string): Promise<Exercise | null> {
@@ -103,9 +171,10 @@ export async function getExercise(id: string): Promise<Exercise | null> {
 }
 
 export async function createExercise(input: ExerciseInput): Promise<string> {
+  await rememberCatalog(input);
   const rows = await query<{ id: string }>(
-    `insert into exercises (name, description, image_url, category, equipment, muscles)
-     values ($1, $2, $3, $4, $5, $6)
+    `insert into exercises (name, description, image_url, category, equipment, muscles, measure, target)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
      returning id`,
     [
       input.name,
@@ -114,16 +183,19 @@ export async function createExercise(input: ExerciseInput): Promise<string> {
       input.category,
       input.equipment,
       input.muscles,
+      input.measure,
+      input.target,
     ],
   );
   return rows[0].id;
 }
 
 export async function updateExercise(id: string, input: ExerciseInput): Promise<boolean> {
+  await rememberCatalog(input);
   const rows = await query<{ id: string }>(
     `update exercises
         set name = $2, description = $3, image_url = $4, category = $5,
-            equipment = $6, muscles = $7, updated_at = now()
+            equipment = $6, muscles = $7, measure = $8, target = $9, updated_at = now()
       where id = $1
       returning id`,
     [
@@ -134,22 +206,24 @@ export async function updateExercise(id: string, input: ExerciseInput): Promise<
       input.category,
       input.equipment,
       input.muscles,
+      input.measure,
+      input.target,
     ],
   );
   return rows.length > 0;
 }
 
 /**
- * Supprime un exercice. Les étapes de programme qui l'utilisaient restent en
- * place sous leur libellé : un programme ne se vide pas en silence.
+ * Supprime un exercice, seulement si aucune séance ne l'utilise : sinon on
+ * le désactive. Renvoie `false` s'il est encore utilisé.
  */
-export async function deleteExercise(id: string): Promise<void> {
-  await query(
-    `update program_steps s
-        set label = coalesce(s.label, e.name)
-       from exercises e
-      where e.id = $1 and s.exercise_id = e.id`,
+export async function deleteExercise(id: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `delete from exercises
+      where id = $1
+        and not exists (select 1 from program_steps where exercise_id = $1)
+     returning id`,
     [id],
   );
-  await query(`delete from exercises where id = $1`, [id]);
+  return rows.length > 0;
 }

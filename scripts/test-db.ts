@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 
 import { PGlite } from "@electric-sql/pglite";
 
+import { addCatalog, deleteCatalog, listCatalog, renameCatalog } from "../lib/catalog";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
   MAX_FAILURES,
@@ -20,7 +21,10 @@ import {
 import { newToken, safeEquals, verifyToken } from "../lib/session";
 import {
   createExercise,
+  countInactiveExercises,
   deleteExercise,
+  exerciseUsage,
+  setExerciseActive,
   getExercise,
   listExercises,
   parseExerciseForm,
@@ -33,7 +37,7 @@ import {
   getProgram,
   listPrograms,
   parseProgramPayload,
-  roundSeconds,
+  totalSeconds,
   sessionSteps,
   updateProgram,
 } from "../lib/programs";
@@ -82,8 +86,8 @@ async function main() {
   ok("le schéma est idempotent");
 
   // Une base restée à une version antérieure : il lui manque les derniers ajouts.
-  await query(`drop table settings`);
-  await query(`alter table workout_sessions drop column steps_total`);
+  await query(`drop table catalog`);
+  await query(`alter table exercises drop column active`);
   assert.equal(await isSchemaReady(), false);
   await ensureSchema();
   assert.equal(await isSchemaReady(), true);
@@ -146,12 +150,15 @@ async function exercisesAndPrograms() {
   assert.ok("error" in parseExerciseForm(form([["name", " "], ["category", "Musculaire"]])));
   ok("un exercice sans nom, ou avec une image non https, est refusé");
 
-  const withImage = parseExerciseForm(form([["name", "Planche"], ["category", "Musculaire"], ["imageUrl", "data:image/jpeg;base64,/9j/4AAQ=="], ["equipment", ""], ["equipmentOther", "Banc"]]));
+  const withImage = parseExerciseForm(form([["name", "Planche"], ["category", "Musculaire"], ["imageUrl", "data:image/jpeg;base64,/9j/4AAQ=="], ["equipment", "Banc"], ["measure", "reps"], ["target", "12"]]));
   assert.ok("input" in withImage);
   assert.equal(withImage.input.imageUrl, "data:image/jpeg;base64,/9j/4AAQ==");
   assert.equal(withImage.input.equipment, "Banc");
+  assert.equal(withImage.input.measure, "reps");
+  assert.equal(withImage.input.target, 12);
   assert.ok("error" in parseExerciseForm(form([["name", "X"], ["category", "Musculaire"], ["imageUrl", "data:text/html;base64,PHA+"]])));
-  ok("une photo réduite est acceptée en data URL, « Autre matériel » l'emporte sur les pastilles");
+  assert.ok("error" in parseExerciseForm(form([["name", "X"], ["category", "Musculaire"], ["measure", "reps"], ["target", "0"]])));
+  ok("une photo réduite est acceptée en data URL ; un exercice se mesure au temps ou aux répétitions");
 
   const squat = await createExercise(parsed.input);
   const plank = await createExercise({
@@ -161,6 +168,8 @@ async function exercisesAndPrograms() {
     category: "Musculaire",
     equipment: "Tapis",
     muscles: ["abdominaux"],
+    measure: "time",
+    target: 60,
   });
   assert.equal((await listExercises()).length, 2);
   assert.ok(await updateExercise(plank, { ...(await getExercise(plank))!, name: "Planche" }));
@@ -171,80 +180,129 @@ async function exercisesAndPrograms() {
     JSON.stringify({
       name: " Kiné genou ",
       category: "Kiné",
-      rounds: 3,
       prepSeconds: 5,
       sound: "bip",
       steps: [
         { kind: "warmup", durationSeconds: 30 },
-        { kind: "exercise", exerciseId: squat, label: "jambe gauche", durationSeconds: 45 },
-        { kind: "exercise", exerciseId: plank, durationSeconds: 60 },
+        { kind: "exercise", exerciseId: squat, label: "jambe gauche", durationSeconds: 45, loopGroup: 1, loopRounds: 3 },
+        { kind: "rest", durationSeconds: 15, loopGroup: 1, loopRounds: 3 },
+        { kind: "exercise", exerciseId: plank, reps: 10, durationSeconds: 1, loopGroup: 1, loopRounds: 3 },
       ],
     }),
   );
   assert.ok("input" in program);
   assert.equal(program.input.name, "Kiné genou");
-  assert.equal(program.input.steps[0].label, "Échauffement");
-  assert.deepEqual(program.input.steps.map((step) => step.durationSeconds), [30, 45, 60]);
-  assert.equal(program.input.rounds, 3);
-  ok("l'éditeur envoie le programme, ses options et ses étapes typées");
+  assert.equal(program.input.steps[0].label, null);
+  // Une étape en répétitions a une durée estimée, à 3 s la répétition.
+  assert.deepEqual(program.input.steps.map((step) => step.durationSeconds), [30, 45, 15, 30]);
+  assert.deepEqual(program.input.steps.map((step) => step.reps), [null, null, null, 10]);
+  ok("l'éditeur envoie la séance, ses options et ses étapes typées, en temps ou en répétitions");
 
   const bad = parseProgramPayload({ name: "X", steps: [{ kind: "rest", durationSeconds: 0 }] });
   assert.ok("error" in bad && bad.error.startsWith("Étape 1"));
   assert.ok("error" in parseProgramPayload({ name: "X", steps: [] }));
-  assert.ok("error" in parseProgramPayload({ name: "X", rounds: 50, steps: [{ kind: "rest", durationSeconds: 10 }] }));
+  assert.ok("error" in parseProgramPayload({ name: "X", steps: [{ kind: "rest", durationSeconds: 10, loopGroup: 1, loopRounds: 50 }] }));
+  // Une boucle coupée en deux par une étape hors boucle est refusée.
+  assert.ok("error" in parseProgramPayload({ name: "X", steps: [
+    { kind: "rest", durationSeconds: 10, loopGroup: 1, loopRounds: 2 },
+    { kind: "rest", durationSeconds: 10 },
+    { kind: "rest", durationSeconds: 10, loopGroup: 1, loopRounds: 2 },
+  ] }));
   assert.ok("error" in parseProgramPayload({ name: "X", steps: [{ kind: "exercise", durationSeconds: 10 }] }));
   assert.ok("error" in parseProgramPayload("pas du json"));
   ok("une durée nulle, un exercice manquant ou des options hors bornes sont refusés");
 
-  assert.equal(roundSeconds(program.input.steps), 135);
-  assert.deepEqual(sessionSteps([1, 2], 3), [1, 2, 1, 2, 1, 2]);
-  ok("une séance répète les étapes d'un tour autant de fois qu'il y a de tours");
+  assert.equal(totalSeconds(program.input.steps), 30 + (45 + 15 + 30) * 3);
+  const loopy = (n: number, loopGroup: number | null, loopRounds = 1) => ({ n, durationSeconds: 1, loopGroup, loopRounds });
+  assert.deepEqual(
+    sessionSteps([loopy(1, null), loopy(2, 1, 2), loopy(3, 1, 2), loopy(4, null), loopy(5, 2, 3)]).map((s) => s.n),
+    [1, 2, 3, 2, 3, 4, 5, 5, 5],
+  );
+  ok("une séance déroule chaque boucle autant de fois que demandé, le reste une seule fois");
 
   const id = await createProgram(program.input);
   let saved = await getProgram(id);
   assert.deepEqual(saved?.steps.map((step) => step.name), [
     "Échauffement",
     "Squat contre le mur — jambe gauche",
+    "Récup",
     "Planche",
   ]);
   assert.deepEqual(saved?.steps[1].muscles, ["fessiers", "quadriceps"]);
-  assert.deepEqual(saved?.steps.map((step) => step.kind), ["warmup", "exercise", "exercise"]);
-  assert.equal(saved?.rounds, 3);
+  assert.deepEqual(saved?.steps.map((step) => step.kind), ["warmup", "exercise", "rest", "exercise"]);
+  assert.deepEqual(saved?.steps.map((step) => step.loopGroup), [null, 1, 1, 1]);
+  assert.deepEqual(saved?.steps.map((step) => step.loopRounds), [1, 3, 3, 3]);
+  assert.equal(saved?.steps[3].reps, 10);
   assert.equal(saved?.prepSeconds, 5);
   assert.equal(saved?.sound, "bip");
   assert.equal(saved?.category, "Kiné");
-  ok("un programme se relit avec ses étapes dans l'ordre, types, options, noms et muscles compris");
+  ok("une séance se relit avec ses étapes dans l'ordre, boucles, répétitions, options, noms et muscles compris");
 
   await updateProgram(id, { ...program.input, steps: program.input.steps.slice(1) });
   saved = await getProgram(id);
-  assert.equal(saved?.steps.length, 2);
+  assert.equal(saved?.steps.length, 3);
   assert.equal(saved?.steps[0].name, "Squat contre le mur — jambe gauche");
   ok("modifier un programme remplace ses étapes");
 
   const summary = (await listPrograms()).find((p) => p.id === id);
-  assert.equal(summary?.stepCount, 2);
-  assert.equal(summary?.totalSeconds, 105);
-  ok("la liste des programmes donne le nombre d'étapes et la durée totale");
+  assert.equal(summary?.stepCount, 3);
+  assert.equal(summary?.totalSeconds, (45 + 15 + 30) * 3);
+  ok("la liste des séances donne le nombre d'étapes et la durée totale, boucles comprises");
 
   const copy = await duplicateProgram(id);
   assert.ok(copy);
   assert.equal((await getProgram(copy))?.name, "Kiné genou (copie)");
-  assert.equal((await getProgram(copy))?.steps.length, 2);
+  assert.equal((await getProgram(copy))?.steps.length, 3);
   ok("un programme se duplique");
 
-  await deleteExercise(plank);
-  saved = await getProgram(id);
-  assert.equal(saved?.steps[1].exerciseId, null);
-  assert.equal(saved?.steps[1].name, "Planche");
-  ok("supprimer un exercice garde l'étape, sous le nom de l'exercice");
+  assert.deepEqual(await exerciseUsage(plank), ["Kiné genou", "Kiné genou (copie)"]);
+  assert.equal(await deleteExercise(plank), false);
+  assert.ok(await getExercise(plank));
+  await setExerciseActive(plank, false);
+  assert.deepEqual((await listExercises()).map((e) => e.name), ["Squat contre le mur"]);
+  assert.equal((await listExercises({ inactive: true })).length, 2);
+  assert.equal(await countInactiveExercises(), 1);
+  assert.equal((await getProgram(id))?.steps[2].name, "Planche");
+  await setExerciseActive(plank, true);
+  const spare = await createExercise({ ...parsed.input, name: "Inutilisé" });
+  assert.equal(await deleteExercise(spare), true);
+  assert.equal(await getExercise(spare), null);
+  ok("un exercice utilisé ne se supprime pas mais se désactive ; inutilisé, il se supprime");
+
+  // Listes gérables : catégories, matériel.
+  assert.ok((await listCatalog("equipment")).some((e) => e.name === "Tapis" && e.uses === 1));
+  assert.ok("error" in (await deleteCatalog("equipment", "Tapis")));
+  assert.ok("ok" in (await addCatalog("equipment", "  Kettlebell ")));
+  assert.ok("error" in (await addCatalog("equipment", "Kettlebell")));
+  assert.ok("ok" in (await renameCatalog("equipment", "Tapis", "Tapis de sol")));
+  assert.equal((await getExercise(plank))?.equipment, "Tapis de sol");
+  assert.ok("error" in (await renameCatalog("equipment", "Tapis de sol", "Kettlebell")));
+  assert.ok("ok" in (await deleteCatalog("equipment", "Kettlebell")));
+  assert.ok("ok" in (await renameCatalog("program_category", "Kiné", "Rééduc")));
+  assert.equal((await getProgram(id))?.category, "Rééduc");
+  ok("une liste s'enrichit, se renomme sur toutes les fiches, et ne perd que ce qui ne sert plus");
 
   // Reprise des étapes antérieures au type : « Repos » devient un repos, un
   // exercice supprimé reste un exercice.
   await query(`insert into program_steps (program_id, position, label, duration_seconds) values ($1, 9, 'Repos', 15)`, [id]);
+  await query(`insert into program_steps (program_id, position, label, duration_seconds) values ($1, 10, 'Planche', 15)`, [id]);
   await runMigrations();
   const kinds = await query<{ label: string; kind: string }>(`select label, kind from program_steps where program_id = $1 order by position`, [id]);
-  assert.deepEqual(kinds.map((k) => k.kind), ["exercise", "exercise", "rest"]);
-  await query(`delete from program_steps where program_id = $1 and position = 9`, [id]);
+  assert.deepEqual(kinds.map((k) => k.kind), ["exercise", "rest", "exercise", "rest", "exercise"]);
+  await query(`delete from program_steps where program_id = $1 and position >= 9`, [id]);
+
+  // Les anciens tours d'un programme deviennent une boucle de toutes ses étapes.
+  const legacy = await createProgram({ name: "Ancien", category: null, notes: null, prepSeconds: 0, sound: "gong", steps: [
+    { kind: "rest", exerciseId: null, label: null, durationSeconds: 10, reps: null, loopGroup: null, loopRounds: 1 },
+    { kind: "rest", exerciseId: null, label: null, durationSeconds: 20, reps: null, loopGroup: null, loopRounds: 1 },
+  ] });
+  await query(`update programs set rounds = 4 where id = $1`, [legacy]);
+  await runMigrations();
+  await runMigrations();
+  assert.deepEqual((await getProgram(legacy))?.steps.map((s) => [s.loopGroup, s.loopRounds]), [[1, 4], [1, 4]]);
+  assert.equal((await query<{ rounds: number }>(`select rounds from programs where id = $1`, [legacy]))[0].rounds, 1);
+  await deleteProgram(legacy);
+  ok("les tours d'un ancien programme deviennent une boucle, une seule fois");
   ok("les anciennes étapes « Repos » sont reprises en repos, sans toucher aux exercices supprimés");
 
   await deleteProgram(copy);
@@ -319,8 +377,8 @@ async function settingsAndBackup() {
   assert.equal(validSetting("voice", "oui"), null);
   ok("les réglages gardent leurs valeurs par défaut et n'enregistrent que des valeurs valides");
 
-  const ex = await createExercise({ name: "Gainage latéral", description: null, imageUrl: null, category: "Musculaire", equipment: null, muscles: ["obliques"] });
-  const prog = await createProgram({ name: "Sauvegarde", category: "Renfo", notes: null, rounds: 2, prepSeconds: 5, sound: "bip", steps: [{ kind: "exercise", exerciseId: ex, label: null, durationSeconds: 30 }, { kind: "rest", exerciseId: null, label: "Repos", durationSeconds: 10 }] });
+  const ex = await createExercise({ name: "Gainage latéral", description: null, imageUrl: null, category: "Musculaire", equipment: null, muscles: ["obliques"], measure: "reps", target: 12 });
+  const prog = await createProgram({ name: "Sauvegarde", category: "Renfo", notes: null, prepSeconds: 5, sound: "bip", steps: [{ kind: "exercise", exerciseId: ex, label: null, durationSeconds: 36, reps: 12, loopGroup: 1, loopRounds: 2 }, { kind: "rest", exerciseId: null, label: null, durationSeconds: 10, reps: null, loopGroup: 1, loopRounds: 2 }] });
   await recordWorkout({ programId: prog, programName: "Sauvegarde", startedAt: new Date("2026-10-08T07:00:00Z"), durationSeconds: 80, completed: true });
 
   const backup = JSON.parse(JSON.stringify(await exportData()));
@@ -332,8 +390,11 @@ async function settingsAndBackup() {
   assert.ok("backup" in parsed);
   assert.deepEqual(await importData(parsed.backup), counts);
   const restored = await getProgram(prog);
-  assert.equal(restored?.rounds, 2);
-  assert.deepEqual(restored?.steps.map((s) => s.name), ["Gainage latéral", "Repos"]);
+  assert.deepEqual(restored?.steps.map((s) => s.loopRounds), [2, 2]);
+  assert.equal(restored?.steps[0].reps, 12);
+  assert.equal((await getExercise(ex))?.target, 12);
+  assert.ok((await listCatalog("equipment")).some((e) => e.name === "Tapis de sol"));
+  assert.deepEqual(restored?.steps.map((s) => s.name), ["Gainage latéral", "Récup"]);
   assert.deepEqual(restored?.steps[0].muscles, ["obliques"]);
   assert.equal((await getSettings()).voice, false);
   assert.equal((await listWorkouts()).length, counts.workouts);
@@ -342,10 +403,14 @@ async function settingsAndBackup() {
   // Fichier ancien, sans les colonnes ajoutées depuis : valeurs par défaut.
   delete backup.data.programs[0].rounds;
   delete backup.data.program_steps[0].kind;
+  delete backup.data.program_steps[0].loop_group;
+  delete backup.data.exercises[0].active;
+  delete backup.data.catalog;
   const old = parseBackup(JSON.stringify(backup));
   assert.ok("backup" in old);
   await importData(old.backup);
-  assert.ok((await listPrograms()).every((p) => p.rounds >= 1));
+  assert.ok((await listExercises()).length > 0);
+  assert.ok((await listCatalog("exercise_category")).some((e) => e.name === "Musculaire"));
   assert.ok("error" in parseBackup("{}"));
   assert.ok("error" in parseBackup("pas du json"));
   assert.ok("error" in parseBackup(JSON.stringify({ ...backup, version: 99 })));

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { formatClock } from "@/lib/duration";
 import { getExercise } from "@/lib/exercises";
 import { muscleLabel } from "@/lib/muscles";
 
@@ -8,6 +9,7 @@ import { databaseBlocker } from "../../db-screens";
 import { BodyMap } from "../../ui/body-map";
 import { Icon } from "../../ui/icons";
 import { Lanes } from "../../ui/lanes";
+import { setExerciseActiveAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,6 +28,18 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
         <Link href="/exercices" className="round" aria-label="Retour aux exercices"><Icon name="back" size={20} /></Link>
         <Link href={`/exercices/${exercise.id}/modifier`} className="round" aria-label="Modifier l'exercice"><Icon name="edit" size={18} /></Link>
       </div>
+
+      {exercise.active ? null : (
+        <form action={setExerciseActiveAction} className="galet" style={{ marginTop: 18, borderRadius: 28, borderStyle: "dashed", display: "flex", alignItems: "center", gap: 12, padding: "12px 12px 12px 18px" }}>
+          <input type="hidden" name="id" value={exercise.id} />
+          <input type="hidden" name="active" value="1" />
+          <span style={{ flex: 1, fontSize: 13 }}>
+            <strong style={{ display: "block" }}>Exercice désactivé</strong>
+            <span className="muted">Il n&apos;est plus proposé dans les séances.</span>
+          </span>
+          <button type="submit" className="btn volt" style={{ height: 40, padding: "0 16px", fontSize: 14 }}>Réactiver</button>
+        </form>
+      )}
 
       <span className="tag" style={{ marginTop: 18 }}>{exercise.category}</span>
       <h1 className="display" style={{ fontSize: 26, lineHeight: 1.08, marginTop: 12 }}>{exercise.name}</h1>
@@ -66,6 +80,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
 
       <p className="mono muted" style={{ marginTop: 18, fontSize: 11, letterSpacing: "0.06em" }}>
         MATÉRIEL · {(exercise.equipment ?? "aucun").toUpperCase()}
+        {exercise.target ? ` · ${exercise.measure === "reps" ? `${exercise.target} RÉPÉTITIONS` : formatClock(exercise.target)}` : ""}
       </p>
     </main>
   );

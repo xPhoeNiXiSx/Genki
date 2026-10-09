@@ -26,7 +26,9 @@ type PlayStep = {
   name: string;
   muscles: MuscleKey[];
   durationSeconds: number;
-  /** Position de l'étape dans un tour, pour le récap. */
+  /** Étape en répétitions : la séance attend « Fait ». */
+  reps: number | null;
+  /** Position de l'étape dans le programme, pour le récap. */
   source: number;
 };
 
@@ -41,14 +43,15 @@ const FEELINGS = [
 export function SessionPlayer({ program, settings, streakAfter }: { program: Program; settings: Settings; streakAfter: number }) {
   const router = useRouter();
 
-  // Les étapes jouées : préparation éventuelle, puis un tour répété.
+  // Les étapes jouées : préparation éventuelle, puis les étapes, boucles
+  // déroulées.
   const initialSteps = useMemo<PlayStep[]>(() => {
-    const rounds = sessionSteps(program.steps.map((s, i) => ({ ...s, source: i })), program.rounds).map(
-      (s): PlayStep => ({ kind: s.kind, name: s.name, muscles: s.muscles, durationSeconds: s.durationSeconds, source: s.source }),
+    const played = sessionSteps(program.steps.map((s, i) => ({ ...s, source: i }))).map(
+      (s): PlayStep => ({ kind: s.kind, name: s.name, muscles: s.muscles, durationSeconds: s.durationSeconds, reps: s.reps, source: s.source }),
     );
     return program.prepSeconds > 0
-      ? [{ kind: "prep", name: "Préparation", muscles: [], durationSeconds: program.prepSeconds, source: -1 }, ...rounds]
-      : rounds;
+      ? [{ kind: "prep", name: "Préparation", muscles: [], durationSeconds: program.prepSeconds, reps: null, source: -1 }, ...played]
+      : played;
   }, [program]);
   const offset = program.prepSeconds > 0 ? 1 : 0;
   const realCount = initialSteps.length - offset;
@@ -64,6 +67,8 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
   const lastMs = useRef(-1);
   const release = useRef<(() => void) | null>(null);
   const recorded = useRef(false);
+  // Étape en répétitions sur laquelle la séance attend « Fait ».
+  const [holding, setHolding] = useState<number | null>(null);
 
   const ms = elapsed(clock, now);
   const state = stateAt(steps, ms);
@@ -81,6 +86,26 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
     const tick = () => {
       const t = performance.now();
       const at = elapsed(clock, t);
+      // Une étape en répétitions fige le temps à son début, jusqu'à « Fait ».
+      const reached = stateAt(steps, at);
+      if (!reached.finished && steps[reached.index]?.reps != null && holding !== reached.index) {
+        const startMs = stepStartMs(steps, reached.index);
+        for (const cue of cuesBetween(steps, lastMs.current, startMs)) {
+          playCue(cue, {
+            signal: settings.signal,
+            voice: settings.voice,
+            vibration: settings.vibration,
+            stepTone: program.sound,
+            signalTone: settings.signalSound,
+            stepName: cue.kind === "step" ? steps[cue.index]?.name : undefined,
+          });
+        }
+        lastMs.current = startMs;
+        setHolding(reached.index);
+        setNow(t);
+        setClock((c) => seek(pause(c, t), t, startMs));
+        return;
+      }
       for (const cue of cuesBetween(steps, lastMs.current, at)) {
         if (cue.kind === "step" && steps[cue.index]?.kind === "prep") continue;
         playCue(cue, {
@@ -98,7 +123,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [running, clock, steps, settings, program.sound]);
+  }, [running, clock, steps, settings, program.sound, holding]);
 
   async function record(completed: boolean, durationMs: number, done: number) {
     if (recorded.current || !startedAt.current) return;
@@ -144,6 +169,8 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
 
   function jump(index: number, resume = false) {
     const t = performance.now();
+    // Arriver sur une étape en répétitions la refait attendre.
+    setHolding(null);
     const target = stepStartMs(steps, index);
     // Le signal de l'étape visée sera joué par le prochain rafraîchissement.
     lastMs.current = target - 1;
@@ -175,8 +202,25 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
     router.push(workoutId ? `/suivi/${workoutId}` : "/");
   }
 
+  /** Répétitions faites : on passe à l'étape suivante et le temps repart. */
+  function repsDone() {
+    const after = state.index + 1;
+    setHolding(null);
+    if (after >= steps.length) {
+      const t = performance.now();
+      setClock((c) => play(seek(c, t, state.totalMs), t));
+      setNow(t);
+      return;
+    }
+    jump(after, true);
+  }
+
   // --- Bilan --------------------------------------------------------------
   if (ended) {
+    const expected = (i: number) => {
+      const s = program.steps[i];
+      return s.loopGroup === null ? 1 : s.loopRounds;
+    };
     const doneBySource = new Map<number, number>();
     steps.slice(offset, offset + ended.done).forEach((s) => doneBySource.set(s.source, (doneBySource.get(s.source) ?? 0) + 1));
     return (
@@ -246,7 +290,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
         <div className="settings" style={{ padding: "6px 0" }}>
           {program.steps.map((s, i) => {
             const count = doneBySource.get(i) ?? 0;
-            const full = count >= program.rounds;
+            const full = count >= expected(i);
             return (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 18px", borderTop: 0 }}>
                 <span style={{ width: 22, height: 22, borderRadius: "50%", display: "grid", placeItems: "center", background: full ? "var(--ink)" : "transparent", border: full ? 0 : "1.5px dashed rgba(26,26,29,.4)", color: "var(--volt)" }}>
@@ -254,7 +298,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
                 </span>
                 <span style={{ flex: 1, fontWeight: 700, fontSize: 14, opacity: count ? 1 : 0.5 }}>{s.name}</span>
                 <span className="mono muted" style={{ fontSize: 12 }}>
-                  {formatClock(s.durationSeconds)}{program.rounds > 1 ? ` ×${count}` : ""}
+                  {s.reps !== null ? `${s.reps} rép.` : formatClock(s.durationSeconds)}{expected(i) > 1 ? ` · ${count}/${expected(i)}` : ""}
                 </span>
               </div>
             );
@@ -310,7 +354,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
         <p className="label" style={{ textAlign: "center", margin: "22px 0 4px", opacity: 0.7 }}>{started ? "Prépare-toi" : "Prêt ?"}</p>
         <h1 className="display" style={{ fontSize: 30, textAlign: "center" }}>{first.name}</h1>
         <p className="mono muted" style={{ textAlign: "center", margin: "6px 0 0", fontSize: 12 }}>
-          première étape · {formatClock(first.durationSeconds)}{program.rounds > 1 ? ` · ${program.rounds} tours` : ""}
+          première étape · {first.reps !== null ? `×${first.reps}` : formatClock(first.durationSeconds)}
         </p>
         <div style={{ position: "relative", width: 260, height: 260, margin: "24px auto 0" }}>
           <svg width="260" height="260" viewBox="0 0 260 260" aria-hidden="true">
@@ -333,7 +377,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
               <span style={{ display: "block", fontSize: 12, color: "var(--volt)", opacity: 0.85 }}>Puis</span>
               <span className="display" style={{ fontSize: 18 }}>{second.name}</span>
             </span>
-            <span className="mono" style={{ color: "var(--volt)", fontSize: 18 }}>{formatClock(second.durationSeconds)}</span>
+            <span className="mono" style={{ color: "var(--volt)", fontSize: 18 }}>{second.reps !== null ? `×${second.reps}` : formatClock(second.durationSeconds)}</span>
           </div>
         ) : null}
         {started ? (
@@ -348,6 +392,48 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
             <Icon name="play" size={18} /> Démarrer la séance
           </button>
         )}
+      </main>
+    );
+  }
+
+  const nextLabel = (s: PlayStep) => (s.reps !== null ? `×${s.reps}` : formatClock(s.durationSeconds));
+
+  // --- Répétitions : on attend « Fait » ---------------------------------------
+  if (holding === state.index && current.reps !== null) {
+    return (
+      <main className="screen bare">
+        <Lanes centered />
+        {header(false)}
+        {progressDots(false)}
+        <p className="label" style={{ margin: "20px 0 4px", opacity: 0.7 }}>À ton rythme</p>
+        <h1 className="display" style={{ fontSize: 28, paddingRight: 30 }}>{current.name}</h1>
+        <div style={{ position: "relative", width: 240, height: 240, margin: "22px auto 0" }}>
+          <svg width="240" height="240" viewBox="0 0 240 240" aria-hidden="true">
+            <circle cx="120" cy="120" r="104" fill="var(--volt)" stroke="var(--ink)" strokeWidth="1.5" />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center" }}>
+            <span className="display" style={{ fontSize: 84, lineHeight: 1 }}>×{current.reps}</span>
+            <span style={{ fontSize: 13, marginTop: 8 }}>répétitions</span>
+          </div>
+        </div>
+        {current.muscles.length > 0 ? (
+          <p className="muted" style={{ textAlign: "center", margin: "16px 0 0", fontSize: 13 }}>{current.muscles.map(muscleLabel).join(" · ")}</p>
+        ) : null}
+        {next ? (
+          <div className="galet ink alt" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, padding: "12px 22px" }}>
+            <span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--volt)", opacity: 0.85 }}>Ensuite</span>
+              <span className="display" style={{ fontSize: 18 }}>{next.name}</span>
+            </span>
+            <span className="mono" style={{ color: "var(--volt)", fontSize: 18 }}>{nextLabel(next)}</span>
+          </div>
+        ) : null}
+        <button type="button" className="btn volt wide" style={{ marginTop: 20, height: 64, fontSize: 20 }} onClick={repsDone}>
+          <Icon name="check" size={22} strokeWidth={3} /> Fait
+        </button>
+        <button type="button" className="btn wide" style={{ marginTop: 10, background: "transparent", color: "var(--ink)", border: "1.5px solid var(--ink)" }} onClick={terminate}>
+          <Icon name="stop" size={18} /> Terminer la séance
+        </button>
       </main>
     );
   }
@@ -409,7 +495,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
         <Lanes centered dark />
         {header(true)}
         {progressDots(true)}
-        <p className="label" style={{ margin: "20px 0 4px", color: "var(--volt)" }}>Repos</p>
+        <p className="label" style={{ margin: "20px 0 4px", color: "var(--volt)" }}>Récup</p>
         <h1 className="display" style={{ fontSize: 30 }}>Respire</h1>
         <div style={{ position: "relative", width: 260, height: 260, margin: "18px auto 0" }}>
           <svg width="260" height="260" viewBox="0 0 260 260" aria-hidden="true">
@@ -429,12 +515,12 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
               <span className="muted" style={{ display: "block", fontSize: 12 }}>Ensuite</span>
               <span className="display" style={{ fontSize: 18 }}>{next.name}</span>
             </span>
-            <span className="mono" style={{ fontSize: 18 }}>{formatClock(next.durationSeconds)}</span>
+            <span className="mono" style={{ fontSize: 18 }}>{nextLabel(next)}</span>
           </div>
         ) : null}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, marginTop: 12 }}>
           <button type="button" className="btn" style={{ background: "var(--white)", color: "var(--ink)", height: 52, borderRadius: 26 }} onClick={extend}>+ {EXTEND_SECONDS} s</button>
-          <button type="button" className="btn volt" style={{ height: 52, borderRadius: 26, border: 0 }} onClick={() => jump(state.index + 1)}><Icon name="next" size={18} /> Passer le repos</button>
+          <button type="button" className="btn volt" style={{ height: 52, borderRadius: 26, border: 0 }} onClick={() => jump(state.index + 1)}><Icon name="next" size={18} /> Passer la récup</button>
         </div>
         {controls(true)}
       </main>
@@ -483,7 +569,7 @@ export function SessionPlayer({ program, settings, streakAfter }: { program: Pro
             <span style={{ display: "block", fontSize: 12, color: "var(--volt)", opacity: 0.85 }}>Ensuite</span>
             <span className="display" style={{ fontSize: 18 }}>{next.name}</span>
           </span>
-          <span className="mono" style={{ color: "var(--volt)", fontSize: 18 }}>{formatClock(next.durationSeconds)}</span>
+          <span className="mono" style={{ color: "var(--volt)", fontSize: 18 }}>{nextLabel(next)}</span>
         </div>
       ) : null}
 

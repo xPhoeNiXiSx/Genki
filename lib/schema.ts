@@ -64,6 +64,53 @@ export const SCHEMA_STATEMENTS: string[] = [
     where kind = 'exercise' and exercise_id is null
       and (lower(label) like 'repos%' or lower(label) like '%chauff%')`,
 
+  // Boucles : des étapes consécutives qui partagent un numéro de boucle sont
+  // jouées `loop_rounds` fois avant de passer à la suite.
+  `alter table program_steps add column if not exists loop_group smallint`,
+  `alter table program_steps add column if not exists loop_rounds smallint`,
+  // Les tours portaient sur tout le programme : ils deviennent une boucle qui
+  // englobe toutes ses étapes. Rejouable sans effet (rounds repasse à 1).
+  `update program_steps s
+      set loop_group = 1, loop_rounds = p.rounds
+     from programs p
+    where p.id = s.program_id and p.rounds > 1 and s.loop_group is null`,
+  `update programs set rounds = 1 where rounds > 1`,
+  // Étape en répétitions : la durée reste une estimation, la séance attend
+  // que l'on touche « Fait ».
+  `alter table program_steps add column if not exists reps integer check (reps > 0)`,
+
+  // Un exercice se mesure au temps ou aux répétitions ; la valeur sert de
+  // proposition quand on l'ajoute à une séance. Un exercice désactivé reste
+  // dans les séances qui l'utilisent mais n'est plus proposé.
+  `alter table exercises add column if not exists measure text not null default 'time'`,
+  `alter table exercises add column if not exists target integer check (target > 0)`,
+  `alter table exercises add column if not exists active boolean not null default true`,
+
+  // Listes modifiables : catégories d'exercice, matériel, catégories de
+  // séance. Le nom est recopié sur les fiches, renommer le répercute.
+  `create table if not exists catalog (
+     kind  text not null,
+     name  text not null,
+     primary key (kind, name)
+   )`,
+  // Valeurs de départ, posées une seule fois : une liste vidée exprès ne se
+  // remplit pas de nouveau.
+  `insert into catalog (kind, name)
+   select v.kind, v.name
+     from (values ('exercise_category', 'Musculaire'), ('exercise_category', 'Endurance'),
+                  ('exercise_category', 'Course à pied'), ('equipment', 'Tapis'),
+                  ('equipment', 'Haltères'), ('equipment', 'Élastique'),
+                  ('program_category', 'Kiné'), ('program_category', 'Renfo'),
+                  ('program_category', 'Course')) as v(kind, name)
+    where not exists (select 1 from catalog c where c.kind = v.kind)
+   on conflict do nothing`,
+  // Les valeurs déjà employées sur les fiches y figurent toujours.
+  `insert into catalog (kind, name)
+   select 'exercise_category', category from exercises
+   union select 'equipment', equipment from exercises where equipment is not null
+   union select 'program_category', category from programs where category is not null
+   on conflict do nothing`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (

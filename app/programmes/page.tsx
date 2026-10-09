@@ -19,12 +19,12 @@ export default async function ProgramsPage() {
   return (
     <main className="screen">
       <Lanes />
-      <Link href="/programmes/nouveau" className="round volt" aria-label="Créer un programme" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
+      <Link href="/programmes/nouveau" className="round volt" aria-label="Créer une séance" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
         <Icon name="plus" size={20} />
       </Link>
-      <h1 className="display title">Programmes</h1>
+      <h1 className="display title">Séances</h1>
       <p className="subtitle">
-        プログラム · {programs.length} programme{programs.length > 1 ? "s" : ""}
+        セッション · {programs.length} séance{programs.length > 1 ? "s" : ""}
       </p>
 
       <div style={{ display: "grid", gap: 14, marginTop: 24 }}>
@@ -38,7 +38,7 @@ export default async function ProgramsPage() {
           />
         ))}
         <Link href="/programmes/nouveau" className="galet" style={{ border: "1.5px dashed rgba(26,26,29,.45)", background: "transparent", borderRadius: 24, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, minHeight: 64, fontWeight: 900 }}>
-          <Icon name="plus" size={20} /> Créer un programme
+          <Icon name="plus" size={20} /> Créer une séance
         </Link>
       </div>
 

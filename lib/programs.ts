@@ -13,7 +13,7 @@ export type StepKind = (typeof STEP_KINDS)[number];
 
 export const STEP_KIND_LABELS: Record<StepKind, string> = {
   exercise: "Exercice",
-  rest: "Repos",
+  rest: "Récup",
   warmup: "Échauffement",
 };
 
@@ -25,23 +25,30 @@ export const SOUNDS = [
 ] as const;
 export type SoundKey = (typeof SOUNDS)[number]["key"];
 
-export const PROGRAM_CATEGORIES = ["Kiné", "Renfo", "Course"];
-
 export const MAX_ROUNDS = 20;
+export const MAX_REPS = 500;
+/** Durée estimée d'une répétition, pour les totaux. */
+export const REP_SECONDS = 3;
 export const MAX_PREP_SECONDS = 60;
 
 export type StepInput = {
   kind: StepKind;
   exerciseId: string | null;
   label: string | null;
+  /** Pour une étape en répétitions, durée estimée. */
   durationSeconds: number;
+  /** Nombre de répétitions ; `null` pour une étape chronométrée. */
+  reps: number | null;
+  /** Numéro de boucle, partagé par des étapes consécutives. */
+  loopGroup: number | null;
+  /** Tours de la boucle, identique sur toutes ses étapes. */
+  loopRounds: number;
 };
 
 export type ProgramInput = {
   name: string;
   category: string | null;
   notes: string | null;
-  rounds: number;
   prepSeconds: number;
   sound: SoundKey;
   steps: StepInput[];
@@ -62,9 +69,8 @@ export type ProgramSummary = {
   id: string;
   name: string;
   category: string | null;
-  rounds: number;
   stepCount: number;
-  /** Durée d'un tour. */
+  /** Durée totale, boucles comprises. */
   totalSeconds: number;
   lastDoneAt: Date | null;
 };
@@ -79,9 +85,25 @@ function isKind(value: unknown): value is StepKind {
   return STEP_KINDS.includes(value as StepKind);
 }
 
-/** Durée d'un tour, en secondes. */
-export function roundSeconds(steps: { durationSeconds: number }[]): number {
-  return steps.reduce((sum, step) => sum + step.durationSeconds, 0);
+type Loopable = { durationSeconds: number; loopGroup: number | null; loopRounds: number };
+
+/** Durée totale, en secondes, boucles comprises. */
+export function totalSeconds(steps: Loopable[]): number {
+  return steps.reduce((sum, step) => sum + step.durationSeconds * (step.loopGroup === null ? 1 : step.loopRounds), 0);
+}
+
+/**
+ * Découpe les étapes en blocs : une étape seule, ou une boucle d'étapes
+ * consécutives de même numéro.
+ */
+export function stepBlocks<T extends Loopable>(steps: T[]): { loop: { group: number; rounds: number } | null; steps: T[] }[] {
+  const blocks: { loop: { group: number; rounds: number } | null; steps: T[] }[] = [];
+  for (const step of steps) {
+    const last = blocks.at(-1);
+    if (step.loopGroup !== null && last?.loop?.group === step.loopGroup) last.steps.push(step);
+    else blocks.push({ loop: step.loopGroup === null ? null : { group: step.loopGroup, rounds: step.loopRounds }, steps: [step] });
+  }
+  return blocks;
 }
 
 /**
@@ -93,19 +115,15 @@ export function parseProgramPayload(raw: unknown): { input: ProgramInput } | { e
   try {
     data = typeof raw === "string" ? JSON.parse(raw) : raw;
   } catch {
-    return { error: "Le programme envoyé est illisible." };
+    return { error: "La séance envoyée est illisible." };
   }
-  if (!data || typeof data !== "object") return { error: "Le programme envoyé est illisible." };
+  if (!data || typeof data !== "object") return { error: "La séance envoyée est illisible." };
   const d = data as Record<string, unknown>;
   const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
   const name = text(d.name).slice(0, 120);
-  if (!name) return { error: "Donne un nom au programme." };
+  if (!name) return { error: "Donne un nom à la séance." };
 
-  const rounds = Number(d.rounds ?? 1);
-  if (!Number.isInteger(rounds) || rounds < 1 || rounds > MAX_ROUNDS) {
-    return { error: `Le nombre de tours va de 1 à ${MAX_ROUNDS}.` };
-  }
   const prepSeconds = Number(d.prepSeconds ?? 10);
   if (!Number.isInteger(prepSeconds) || prepSeconds < 0 || prepSeconds > MAX_PREP_SECONDS) {
     return { error: `Le temps de préparation va de 0 à ${MAX_PREP_SECONDS} secondes.` };
@@ -126,18 +144,45 @@ export function parseProgramPayload(raw: unknown): { input: ProgramInput } | { e
     if (step.kind === "exercise" && !exerciseId && !label) {
       return { error: `${position} : choisis un exercice.` };
     }
-    const durationSeconds = Number(step.durationSeconds);
+    const reps = step.kind === "exercise" && step.reps != null ? Number(step.reps) : null;
+    if (reps !== null && (!Number.isInteger(reps) || reps <= 0 || reps > MAX_REPS)) {
+      return { error: `${position} : de 1 à ${MAX_REPS} répétitions.` };
+    }
+    const durationSeconds = reps !== null ? reps * REP_SECONDS : Number(step.durationSeconds);
     if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) {
       return { error: `${position} : durée invalide.` };
     }
     if (durationSeconds > MAX_STEP_SECONDS) return { error: `${position} : une étape ne dépasse pas 3 heures.` };
 
+    const loopGroup = step.loopGroup == null ? null : Number(step.loopGroup);
+    if (loopGroup !== null && (!Number.isInteger(loopGroup) || loopGroup < 1 || loopGroup > 1000)) {
+      return { error: `${position} : boucle invalide.` };
+    }
+    const loopRounds = loopGroup === null ? 1 : Number(step.loopRounds);
+    if (!Number.isInteger(loopRounds) || loopRounds < 1 || loopRounds > MAX_ROUNDS) {
+      return { error: `${position} : une boucle se répète de 1 à ${MAX_ROUNDS} fois.` };
+    }
+
     steps.push({
       kind: step.kind,
       exerciseId: step.kind === "exercise" ? exerciseId : null,
-      label: label ?? (step.kind === "exercise" ? null : STEP_KIND_LABELS[step.kind]),
+      label: step.kind === "exercise" ? label : null,
       durationSeconds,
+      reps,
+      loopGroup,
+      loopRounds,
     });
+  }
+
+  // Une boucle est faite d'étapes consécutives, avec un seul nombre de tours.
+  const seen = new Map<number, number>();
+  for (const [i, step] of steps.entries()) {
+    if (step.loopGroup === null) continue;
+    const before = seen.get(step.loopGroup);
+    if (before !== undefined && (steps[i - 1]?.loopGroup !== step.loopGroup || before !== step.loopRounds)) {
+      return { error: "Une boucle doit regrouper des étapes qui se suivent." };
+    }
+    seen.set(step.loopGroup, step.loopRounds);
   }
 
   return {
@@ -145,7 +190,6 @@ export function parseProgramPayload(raw: unknown): { input: ProgramInput } | { e
       name,
       category: text(d.category).slice(0, 40) || null,
       notes: text(d.notes) || null,
-      rounds,
       prepSeconds,
       sound,
       steps,
@@ -161,25 +205,36 @@ export function parseProgramPayload(raw: unknown): { input: ProgramInput } | { e
 async function writeSteps(programId: string, steps: StepInput[]): Promise<void> {
   await query(
     `with gone as (delete from program_steps where program_id = $1)
-     insert into program_steps (program_id, position, kind, exercise_id, label, duration_seconds)
-     select $1, s.ord - 1, s.kind, s.exercise_id, s.label, s.duration
-       from unnest($2::text[], $3::uuid[], $4::text[], $5::int[])
-            with ordinality as s(kind, exercise_id, label, duration, ord)`,
+     insert into program_steps (program_id, position, kind, exercise_id, label, duration_seconds,
+                                reps, loop_group, loop_rounds)
+     select $1, s.ord - 1, s.kind, s.exercise_id, s.label, s.duration, s.reps, s.loop_group, s.loop_rounds
+       from unnest($2::text[], $3::uuid[], $4::text[], $5::int[], $6::int[], $7::smallint[], $8::smallint[])
+            with ordinality as s(kind, exercise_id, label, duration, reps, loop_group, loop_rounds, ord)`,
     [
       programId,
       steps.map((step) => step.kind),
       steps.map((step) => step.exerciseId),
       steps.map((step) => step.label),
       steps.map((step) => step.durationSeconds),
+      steps.map((step) => step.reps),
+      steps.map((step) => step.loopGroup),
+      steps.map((step) => (step.loopGroup === null ? null : step.loopRounds)),
     ],
   );
 }
 
+/** La catégorie s'ajoute à sa liste si elle n'y figure pas encore. */
+async function rememberCategory(category: string | null): Promise<void> {
+  if (!category) return;
+  await query(`insert into catalog (kind, name) values ('program_category', $1) on conflict do nothing`, [category]);
+}
+
 export async function createProgram(input: ProgramInput): Promise<string> {
+  await rememberCategory(input.category);
   const rows = await query<{ id: string }>(
-    `insert into programs (name, category, notes, rounds, prep_seconds, sound)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
-    [input.name, input.category, input.notes, input.rounds, input.prepSeconds, input.sound],
+    `insert into programs (name, category, notes, prep_seconds, sound)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [input.name, input.category, input.notes, input.prepSeconds, input.sound],
   );
   const id = rows[0].id;
   await writeSteps(id, input.steps);
@@ -187,12 +242,13 @@ export async function createProgram(input: ProgramInput): Promise<string> {
 }
 
 export async function updateProgram(id: string, input: ProgramInput): Promise<boolean> {
+  await rememberCategory(input.category);
   const rows = await query<{ id: string }>(
     `update programs
-        set name = $2, category = $3, notes = $4, rounds = $5, prep_seconds = $6,
-            sound = $7, updated_at = now()
+        set name = $2, category = $3, notes = $4, prep_seconds = $5,
+            sound = $6, updated_at = now()
       where id = $1 returning id`,
-    [id, input.name, input.category, input.notes, input.rounds, input.prepSeconds, input.sound],
+    [id, input.name, input.category, input.notes, input.prepSeconds, input.sound],
   );
   if (rows.length === 0) return false;
   await writeSteps(id, input.steps);
@@ -210,11 +266,14 @@ export async function duplicateProgram(id: string): Promise<string | null> {
   return createProgram({
     ...program,
     name: `${program.name} (copie)`,
-    steps: program.steps.map(({ kind, exerciseId, label, durationSeconds }) => ({
+    steps: program.steps.map(({ kind, exerciseId, label, durationSeconds, reps, loopGroup, loopRounds }) => ({
       kind,
       exerciseId,
       label,
       durationSeconds,
+      reps,
+      loopGroup,
+      loopRounds,
     })),
   });
 }
@@ -225,10 +284,9 @@ export async function getProgram(id: string): Promise<Program | null> {
     name: string;
     category: string | null;
     notes: string | null;
-    rounds: number;
     prep_seconds: number;
     sound: string;
-  }>(`select id, name, category, notes, rounds, prep_seconds, sound from programs where id = $1`, [id]);
+  }>(`select id, name, category, notes, prep_seconds, sound from programs where id = $1`, [id]);
   const program = programs[0];
   if (!program) return null;
 
@@ -237,10 +295,13 @@ export async function getProgram(id: string): Promise<Program | null> {
     exercise_id: string | null;
     label: string | null;
     duration_seconds: number;
+    reps: number | null;
+    loop_group: number | null;
+    loop_rounds: number | null;
     exercise_name: string | null;
     muscles: string[] | null;
   }>(
-    `select s.kind, s.exercise_id, s.label, s.duration_seconds,
+    `select s.kind, s.exercise_id, s.label, s.duration_seconds, s.reps, s.loop_group, s.loop_rounds,
             e.name as exercise_name, e.muscles
        from program_steps s
        left join exercises e on e.id = s.exercise_id
@@ -254,7 +315,6 @@ export async function getProgram(id: string): Promise<Program | null> {
     name: program.name,
     category: program.category,
     notes: program.notes,
-    rounds: program.rounds,
     prepSeconds: program.prep_seconds,
     sound: isSound(program.sound) ? program.sound : "gong",
     steps: steps.map((row) => {
@@ -264,6 +324,9 @@ export async function getProgram(id: string): Promise<Program | null> {
         exerciseId: row.exercise_id,
         label: row.label,
         durationSeconds: row.duration_seconds,
+        reps: kind === "exercise" ? row.reps : null,
+        loopGroup: row.loop_group,
+        loopRounds: row.loop_group === null ? 1 : (row.loop_rounds ?? 1),
         name: stepName(row.exercise_name, row.label, kind),
         muscles: normalizeMuscles(row.muscles ?? []),
       };
@@ -271,18 +334,18 @@ export async function getProgram(id: string): Promise<Program | null> {
   };
 }
 
-/** « Squat — jambe gauche », « Squat », « Repos ». */
+/** « Squat — jambe gauche », « Squat », « Récup ». */
 export function stepName(exerciseName: string | null, label: string | null, kind: StepKind = "exercise"): string {
+  if (kind !== "exercise") return STEP_KIND_LABELS[kind];
   if (exerciseName && label) return `${exerciseName} — ${label}`;
   return exerciseName ?? label ?? STEP_KIND_LABELS[kind];
 }
 
-/**
- * Les étapes d'une séance complète : celles d'un tour, répétées autant de
- * fois qu'il y a de tours.
- */
-export function sessionSteps<T>(steps: T[], rounds: number): T[] {
-  return Array.from({ length: Math.max(1, rounds) }, () => steps).flat();
+/** Les étapes telles qu'elles sont jouées : chaque boucle déroulée. */
+export function sessionSteps<T extends Loopable>(steps: T[]): T[] {
+  return stepBlocks(steps).flatMap((block) =>
+    Array.from({ length: block.loop?.rounds ?? 1 }, () => block.steps).flat(),
+  );
 }
 
 export async function listPrograms(): Promise<ProgramSummary[]> {
@@ -290,14 +353,13 @@ export async function listPrograms(): Promise<ProgramSummary[]> {
     id: string;
     name: string;
     category: string | null;
-    rounds: number;
     step_count: number | string;
     total_seconds: number | string;
     last_done_at: string | Date | null;
   }>(
-    `select p.id, p.name, p.category, p.rounds,
+    `select p.id, p.name, p.category,
             count(s.id) as step_count,
-            coalesce(sum(s.duration_seconds), 0) as total_seconds,
+            coalesce(sum(s.duration_seconds * coalesce(s.loop_rounds, 1)), 0) as total_seconds,
             (select max(w.started_at) from workout_sessions w
               where w.program_id = p.id) as last_done_at
        from programs p
@@ -310,7 +372,6 @@ export async function listPrograms(): Promise<ProgramSummary[]> {
     id: row.id,
     name: row.name,
     category: row.category,
-    rounds: row.rounds,
     stepCount: Number(row.step_count),
     totalSeconds: Number(row.total_seconds),
     lastDoneAt: row.last_done_at ? new Date(row.last_done_at) : null,

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { formatLength } from "@/lib/duration";
-import { roundSeconds, type Program } from "@/lib/programs";
+import { totalSeconds, type Program } from "@/lib/programs";
 
 import { Icon } from "./icons";
 
@@ -20,7 +20,7 @@ export function ProgramBib({
   band: string;
   hero?: boolean;
 }) {
-  const total = roundSeconds(program.steps) * program.rounds;
+  const total = totalSeconds(program.steps);
   return (
     <article className={hero ? "bib tilted" : "bib"}>
       <div className={hero ? "bib-band" : "bib-band ink"}>
@@ -36,7 +36,7 @@ export function ProgramBib({
           </h3>
           <p className="mono muted" style={{ margin: "6px 0 12px", fontSize: 12 }}>
             {program.steps.length} étape{program.steps.length > 1 ? "s" : ""}
-            {program.rounds > 1 ? ` × ${program.rounds} tours` : ""} · {formatLength(total)}
+            {" "}· {formatLength(total)}
           </p>
           <div style={{ display: "flex", gap: 3 }} aria-hidden="true">
             {program.steps.map((step, i) => (

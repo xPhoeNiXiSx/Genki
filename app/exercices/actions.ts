@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { isAuthenticated } from "@/lib/auth";
-import { createExercise, deleteExercise, parseExerciseForm, updateExercise } from "@/lib/exercises";
+import { createExercise, deleteExercise, parseExerciseForm, setExerciseActive, updateExercise } from "@/lib/exercises";
 
 export type ExerciseFormState = { error?: string };
 
@@ -35,12 +35,23 @@ export async function saveExerciseAction(_state: ExerciseFormState, form: FormDa
   redirect(`/exercices/${target}`);
 }
 
+/** Supprime l'exercice ; s'il sert encore dans une séance, il est désactivé. */
 export async function deleteExerciseAction(form: FormData): Promise<void> {
   const id = form.get("id");
   if (typeof id !== "string" || !UUID.test(id)) return;
   await guard(`/exercices/${id}`);
-  await deleteExercise(id);
+  if (!(await deleteExercise(id))) await setExerciseActive(id, false);
   revalidatePath("/exercices");
   revalidatePath("/programmes");
   redirect("/exercices");
+}
+
+export async function setExerciseActiveAction(form: FormData): Promise<void> {
+  const id = form.get("id");
+  if (typeof id !== "string" || !UUID.test(id)) return;
+  await guard(`/exercices/${id}`);
+  await setExerciseActive(id, form.get("active") === "1");
+  revalidatePath("/exercices");
+  revalidatePath("/programmes");
+  redirect(`/exercices/${id}`);
 }

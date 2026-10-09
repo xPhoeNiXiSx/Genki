@@ -20,6 +20,7 @@ export function BodyMap({
   height,
   label,
   onToggle,
+  style,
 }: {
   view: View;
   highlight: MuscleKey[];
@@ -28,6 +29,8 @@ export function BodyMap({
   label?: string;
   /** Rend chaque muscle touchable (formulaire d'exercice). */
   onToggle?: (key: MuscleKey) => void;
+  /** Pour une planche qui suit la taille de son conteneur (zoom). */
+  style?: React.CSSProperties;
 }) {
   const c = TONES[tone];
   const muscles = Object.entries(musclesOf(view)) as [MuscleKey, string[]][];
@@ -55,6 +58,7 @@ export function BodyMap({
       aria-label={label}
       aria-hidden={label ? undefined : true}
       className={onToggle ? "body-map-touch" : undefined}
+      style={style}
     >
       <g fill={c.base}>{both(paths(UNDERLAY))}</g>
       <g fill={c.base} stroke={c.sep} strokeWidth="1" strokeLinejoin="round">

@@ -1,8 +1,8 @@
 import { query } from "@/lib/db";
 
 /**
- * Sauvegarde complète de l'appli, en JSON : exercices, programmes, étapes,
- * séances et réglages.
+ * Sauvegarde complète de l'appli, en JSON : exercices, séances (programmes),
+ * étapes, historique, réglages et listes.
  *
  * L'import est une restauration : il remplace toutes les données par celles
  * du fichier. Les colonnes absentes d'un fichier plus ancien reprennent leur
@@ -19,6 +19,7 @@ const TABLES: { table: string; columns: Column[] }[] = [
     columns: [
       { name: "id" }, { name: "name" }, { name: "description", fallback: null }, { name: "image_url", fallback: null },
       { name: "category" }, { name: "equipment", fallback: null }, { name: "muscles", fallback: [] },
+      { name: "measure", fallback: "time" }, { name: "target", fallback: null }, { name: "active", fallback: true },
       { name: "created_at" }, { name: "updated_at" },
     ],
   },
@@ -35,6 +36,7 @@ const TABLES: { table: string; columns: Column[] }[] = [
     columns: [
       { name: "id" }, { name: "program_id" }, { name: "position" }, { name: "kind", fallback: "exercise" },
       { name: "exercise_id", fallback: null }, { name: "label", fallback: null }, { name: "duration_seconds" },
+      { name: "reps", fallback: null }, { name: "loop_group", fallback: null }, { name: "loop_rounds", fallback: null },
     ],
   },
   {
@@ -49,6 +51,10 @@ const TABLES: { table: string; columns: Column[] }[] = [
   {
     table: "settings",
     columns: [{ name: "key" }, { name: "value" }, { name: "updated_at" }],
+  },
+  {
+    table: "catalog",
+    columns: [{ name: "kind" }, { name: "name" }],
   },
 ];
 
@@ -116,6 +122,16 @@ export async function importData(backup: Backup): Promise<ImportSummary> {
       [JSON.stringify(rows)],
     );
   }
+
+  // Un export antérieur aux listes n'en contient pas : on les reconstitue
+  // depuis les fiches restaurées.
+  await query(
+    `insert into catalog (kind, name)
+     select 'exercise_category', category from exercises
+     union select 'equipment', equipment from exercises where equipment is not null
+     union select 'program_category', category from programs where category is not null
+     on conflict do nothing`,
+  );
 
   return {
     exercises: backup.data.exercises?.length ?? 0,

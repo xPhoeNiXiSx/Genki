@@ -103,7 +103,7 @@ textarea {
 .katakana {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 24px);
-  right: 20px;
+  right: 24px;
   margin: 0;
   writing-mode: vertical-rl;
   text-orientation: upright;
@@ -120,12 +120,19 @@ textarea {
   font-family: var(--font-display, sans-serif);
   font-weight: 400;
   margin: 0;
+  /* Les titres passent souvent sur deux lignes : interligne serré. */
+  line-height: 1.08;
   text-wrap: balance;
+}
+
+/* Katakana sous un bouton rond en haut à droite. */
+.katakana.under-button {
+  top: calc(env(safe-area-inset-top) + 80px);
+  font-size: 44px;
 }
 
 .title {
   font-size: 34px;
-  line-height: 1.1;
   margin-top: 56px;
 }
 

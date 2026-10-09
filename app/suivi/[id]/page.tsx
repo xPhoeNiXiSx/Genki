@@ -26,12 +26,12 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
   // Les étapes réalisées sont reconstituées depuis le programme, s'il existe
   // encore : les premières étapes de la séance, dans l'ordre joué.
   const program = workout.programId ? await getProgram(workout.programId) : null;
-  const played = program ? sessionSteps(program.steps, program.rounds) : [];
+  const played = program ? sessionSteps(program.steps) : [];
   const done = played.slice(0, workout.stepsDone ?? (workout.completed ? played.length : 0));
   const total = workout.stepsTotal ?? played.length;
 
   const steps = (list: typeof done, from: number) =>
-    list.map((s, i) => <StepRow key={from + i} kind={s.kind} n={from + i + 1} name={s.name} muscles={s.muscles} durationSeconds={s.durationSeconds} />);
+    list.map((s, i) => <StepRow key={from + i} kind={s.kind} n={from + i + 1} name={s.name} muscles={s.muscles} durationSeconds={s.durationSeconds} reps={s.reps} />);
 
   return (
     <main className="screen bare">
@@ -100,10 +100,10 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
 
       {program ? (
         <Link href={`/seance/${program.id}`} className="btn volt wide" style={{ marginTop: 20 }}>
-          <Icon name="restart" size={18} /> Relancer ce programme
+          <Icon name="restart" size={18} /> Relancer cette séance
         </Link>
       ) : (
-        <p className="muted" style={{ marginTop: 20, textAlign: "center", fontSize: 13 }}>Le programme de cette séance a été supprimé.</p>
+        <p className="muted" style={{ marginTop: 20, textAlign: "center", fontSize: 13 }}>La séance d&apos;origine a été supprimée.</p>
       )}
     </main>
   );

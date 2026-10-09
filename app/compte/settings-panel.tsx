@@ -132,7 +132,7 @@ export function SettingsPanel({ initial, migrated }: { initial: Settings; migrat
         <div className="sheet-veil" onClick={() => setSoundSheet(false)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Son du signal">
             <h2 className="display" style={{ fontSize: 22 }}>Son du signal</h2>
-            <p className="muted" style={{ margin: "6px 0 16px" }}>Pour le décompte et la fin de séance. Chaque programme garde son propre son de transition.</p>
+            <p className="muted" style={{ margin: "6px 0 16px" }}>Pour le décompte et la fin de séance. Chaque séance garde son propre son de transition.</p>
             <div className="choices">
               {SOUNDS.map((s) => (
                 <button key={s.key} type="button" className={settings.signalSound === s.key ? "chip on" : "chip"} onClick={() => change("signalSound", s.key)}>{s.label}</button>
@@ -150,7 +150,7 @@ export function SettingsPanel({ initial, migrated }: { initial: Settings; migrat
           <div className="sheet" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label="Confirmer la restauration">
             <h2 className="display" style={{ fontSize: 22 }}>Remplacer tes données ?</h2>
             <p style={{ margin: "10px 0 0", lineHeight: 1.45 }}>
-              Le fichier <strong>{pendingFile.name}</strong> va remplacer tous tes exercices, programmes, séances et réglages actuels. Pense à exporter d&apos;abord si tu veux les garder.
+              Le fichier <strong>{pendingFile.name}</strong> va remplacer tous tes exercices, séances, historique et réglages actuels. Pense à exporter d&apos;abord si tu veux les garder.
             </p>
             <button
               type="button"

@@ -14,7 +14,7 @@ const mono = DM_Mono({ weight: ["400", "500"], subsets: ["latin"], variable: "--
 
 export const metadata: Metadata = {
   title: "Genki",
-  description: "Programmes d'entraînement, séances et métronome.",
+  description: "Séances d'entraînement, suivi et métronome.",
   // Ce que iOS lit quand l'application est posée sur l'écran d'accueil.
   appleWebApp: {
     capable: true,

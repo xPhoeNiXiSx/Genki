@@ -3,17 +3,16 @@
 import Link from "next/link";
 import { useActionState, useRef, useState } from "react";
 
-import type { Exercise } from "@/lib/exercises";
+import type { CatalogEntry } from "@/lib/catalog";
+import type { Exercise, Measure } from "@/lib/exercises";
 import { normalizeMuscles, muscleLabel, type MuscleKey } from "@/lib/muscles";
 
 import { BodyMap } from "../ui/body-map";
+import { CatalogPicker } from "../ui/catalog-picker";
 import { Icon } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
 import { Spinner } from "../spinner";
-import { saveExerciseAction, type ExerciseFormState } from "./actions";
-
-const CATEGORIES = ["Musculaire", "Endurance", "Course à pied"];
-const EQUIPMENT = ["Tapis", "Haltères", "Élastique"];
+import { deleteExerciseAction, saveExerciseAction, setExerciseActiveAction, type ExerciseFormState } from "./actions";
 
 /** Plus grand côté de l'image une fois réduite, en pixels. */
 const IMAGE_SIZE = 900;
@@ -29,18 +28,28 @@ async function shrink(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
+export function ExerciseForm({
+  exercise,
+  categories,
+  equipment: equipmentList,
+  usedIn = [],
+}: {
+  exercise?: Exercise;
+  categories: CatalogEntry[];
+  equipment: CatalogEntry[];
+  /** Séances qui utilisent l'exercice : il ne peut alors qu'être désactivé. */
+  usedIn?: string[];
+}) {
   const [state, action, pending] = useActionState<ExerciseFormState, FormData>(saveExerciseAction, {});
   const [muscles, setMuscles] = useState<MuscleKey[]>(exercise?.muscles ?? []);
   const [image, setImage] = useState<string | null>(exercise?.imageUrl ?? null);
   const [imageError, setImageError] = useState<string | null>(null);
-  const initialEquipment = exercise?.equipment ?? null;
-  const [otherEquipment, setOtherEquipment] = useState(
-    initialEquipment !== null && !EQUIPMENT.includes(initialEquipment),
-  );
+  const [category, setCategory] = useState<string | null>(exercise?.category ?? categories[0]?.name ?? null);
+  const [equipment, setEquipment] = useState<string | null>(exercise?.equipment ?? null);
+  const [measure, setMeasure] = useState<Measure>(exercise?.measure ?? "time");
+  const [zoom, setZoom] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const initialCategory = exercise?.category ?? CATEGORIES[0];
-  const categories = CATEGORIES.includes(initialCategory) ? CATEGORIES : [...CATEGORIES, initialCategory];
 
   const toggle = (key: MuscleKey) =>
     setMuscles((list) => normalizeMuscles(list.includes(key) ? list.filter((m) => m !== key) : [...list, key]));
@@ -71,7 +80,6 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
       </div>
 
       <h1 className="display" style={{ fontSize: 30, marginTop: 18 }}>{exercise ? "Modifier l'exercice" : "Nouvel exercice"}</h1>
-      <p className="subtitle">{exercise ? "なおす" : "あたらしい"} · tout reste modifiable</p>
 
       <label className="field-label" htmlFor="name">Nom</label>
       <input id="name" name="name" className="input" defaultValue={exercise?.name} required autoComplete="off" />
@@ -79,7 +87,7 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
       <label className="field-label" htmlFor="description">Description</label>
       <textarea id="description" name="description" className="textarea" defaultValue={exercise?.description ?? ""} rows={3} />
 
-      <div className="galet alt" style={{ marginTop: 18, background: "var(--stone)", borderColor: "var(--stone)", display: "flex", alignItems: "center", gap: 16, padding: 14 }}>
+      <div className="galet" style={{ marginTop: 18, borderRadius: 28, background: "var(--stone)", borderColor: "var(--stone)", display: "flex", alignItems: "center", gap: 16, padding: 14 }}>
         <button
           type="button"
           onClick={() => fileInput.current?.click()}
@@ -101,50 +109,46 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
       </div>
 
       <span className="field-label">Catégorie</span>
-      <div className="choices" role="radiogroup" aria-label="Catégorie">
-        {categories.map((c) => (
-          <label key={c} className="choice">
-            <input type="radio" name="category" value={c} defaultChecked={c === initialCategory} />
-            <span className="chip">{c}</span>
-          </label>
-        ))}
-      </div>
+      <CatalogPicker kind="exercise_category" title="Catégories d'exercice" name="category" entries={categories} value={category} onChange={setCategory} />
 
       <span className="field-label">Matériel</span>
-      <div className="choices" role="radiogroup" aria-label="Matériel">
-        <label className="choice">
-          <input type="radio" name="equipment" value="" defaultChecked={initialEquipment === null} onChange={() => setOtherEquipment(false)} />
-          <span className="chip">Aucun</span>
-        </label>
-        {EQUIPMENT.map((e) => (
-          <label key={e} className="choice">
-            <input type="radio" name="equipment" value={e} defaultChecked={e === initialEquipment} onChange={() => setOtherEquipment(false)} />
-            <span className="chip">{e}</span>
-          </label>
-        ))}
-        {otherEquipment ? (
-          <input
-            name="equipmentOther"
-            className="input"
-            style={{ height: 34, width: 180, padding: "0 14px", fontSize: 16 }}
-            placeholder="Autre matériel"
-            defaultValue={initialEquipment !== null && !EQUIPMENT.includes(initialEquipment) ? initialEquipment : ""}
-            aria-label="Autre matériel"
-            autoFocus={!exercise}
-          />
-        ) : (
-          <button type="button" className="chip dashed" onClick={() => setOtherEquipment(true)}>
-            <Icon name="plus" size={14} /> Autre matériel
-          </button>
-        )}
-      </div>
+      <CatalogPicker kind="equipment" title="Matériel" name="equipment" entries={equipmentList} value={equipment} onChange={setEquipment} noneLabel="Aucun" />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <span className="field-label">Mesure</span>
+      <input type="hidden" name="measure" value={measure} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="choices" role="radiogroup" aria-label="Mesure" style={{ flex: "none" }}>
+          {(["time", "reps"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={measure === m} className={measure === m ? "chip on" : "chip"} onClick={() => setMeasure(m)}>
+              {m === "time" ? "Temps" : "Répétitions"}
+            </button>
+          ))}
+        </div>
+        <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            key={measure}
+            name="target"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            className="input"
+            style={{ height: 44, minWidth: 0, padding: "0 14px", textAlign: "right" }}
+            defaultValue={exercise && exercise.measure === measure ? (exercise.target ?? "") : ""}
+            placeholder={measure === "time" ? "45" : "12"}
+            aria-label={measure === "time" ? "Durée en secondes" : "Nombre de répétitions"}
+          />
+          <span className="mono muted" style={{ fontSize: 13 }}>{measure === "time" ? "s" : "rép."}</span>
+        </label>
+      </div>
+      <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Proposé quand tu ajoutes l&apos;exercice à une séance.</p>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="field-label">Muscles sollicités</span>
-        <span className="mono muted" style={{ fontSize: 11 }}>touche le schéma</span>
+        <button type="button" className="chip dashed" style={{ marginTop: 14 }} onClick={() => setZoom(true)}>
+          <Icon name="search" size={14} /> Agrandir
+        </button>
       </div>
       <section className="galet" style={{ borderRadius: 32, position: "relative", padding: "14px 16px 16px" }}>
-        <span className="display" aria-hidden="true" style={{ position: "absolute", top: 14, right: 18, fontSize: 14, opacity: 0.25 }}>筋肉</span>
         <div style={{ display: "flex", justifyContent: "space-around" }}>
           {(["face", "dos"] as const).map((view) => (
             <figure key={view} style={{ margin: 0, display: "grid", justifyItems: "center", gap: 4 }}>
@@ -153,14 +157,7 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
             </figure>
           ))}
         </div>
-        <div className="choices" style={{ marginTop: 12 }}>
-          {muscles.length === 0 ? <span className="muted" style={{ fontSize: 13 }}>Aucun muscle sélectionné.</span> : null}
-          {muscles.map((m) => (
-            <button key={m} type="button" className="chip accent" onClick={() => toggle(m)} aria-label={`Retirer ${muscleLabel(m)}`}>
-              {muscleLabel(m)} <Icon name="close" size={14} />
-            </button>
-          ))}
-        </div>
+        <SelectedMuscles muscles={muscles} onRemove={toggle} />
       </section>
 
       {state.error ? <p className="error" role="alert" style={{ marginTop: 16 }}>{state.error}</p> : null}
@@ -168,6 +165,96 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
       <button type="submit" className="btn wide" style={{ marginTop: 18 }} disabled={pending}>
         {pending ? <Spinner /> : <Icon name="check" size={20} />} {pending ? "Enregistrement…" : "Enregistrer l'exercice"}
       </button>
+
+      {exercise ? (
+        <button type="button" className="btn" style={{ background: "transparent", color: "var(--danger)", width: "100%", marginTop: 6 }} onClick={() => setConfirmDelete(true)}>
+          <Icon name="trash" size={18} /> Supprimer l&apos;exercice
+        </button>
+      ) : null}
+
+      {zoom ? (
+        <MuscleZoom muscles={muscles} onToggle={toggle} onClose={() => setZoom(false)} />
+      ) : null}
+
+      {confirmDelete && exercise ? (
+        <div className="sheet-veil" onClick={() => setConfirmDelete(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Supprimer l'exercice">
+            {usedIn.length > 0 ? (
+              <>
+                <h2 className="display" style={{ fontSize: 22 }}>Exercice utilisé</h2>
+                <p className="muted" style={{ margin: "8px 0 0" }}>
+                  Il sert dans {usedIn.length > 1 ? "les séances" : "la séance"} {usedIn.map((n) => `« ${n} »`).join(", ")} : il ne peut pas être supprimé.
+                  Désactivé, il y reste mais n&apos;est plus proposé.
+                </p>
+                {exercise.active ? (
+                  <>
+                    <input type="hidden" name="active" value="0" />
+                    <button type="submit" formAction={setExerciseActiveAction} formNoValidate className="btn wide" style={{ marginTop: 20 }}>
+                      Désactiver l&apos;exercice
+                    </button>
+                  </>
+                ) : (
+                  <p style={{ margin: "14px 0 0", fontWeight: 700 }}>Il est déjà désactivé.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <h2 className="display" style={{ fontSize: 22 }}>Supprimer « {exercise.name} » ?</h2>
+                <p className="muted" style={{ margin: "8px 0 0" }}>Aucune séance ne l&apos;utilise. La suppression est définitive.</p>
+                <button type="submit" formAction={deleteExerciseAction} formNoValidate className="btn wide" style={{ marginTop: 20, background: "var(--danger)", borderColor: "var(--danger)", color: "var(--white)" }}>
+                  <Icon name="trash" size={18} /> Supprimer définitivement
+                </button>
+              </>
+            )}
+            <button type="button" className="btn" style={{ background: "transparent", color: "var(--ink)", width: "100%", marginTop: 6 }} onClick={() => setConfirmDelete(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : null}
     </form>
+  );
+}
+
+function SelectedMuscles({ muscles, onRemove }: { muscles: MuscleKey[]; onRemove: (key: MuscleKey) => void }) {
+  if (muscles.length === 0) {
+    return <p className="muted" style={{ margin: "12px 0 0", fontSize: 13, textAlign: "center" }}>Aucun muscle sélectionné.</p>;
+  }
+  return (
+    <div className="choices" style={{ marginTop: 12 }}>
+      {muscles.map((m) => (
+        <button key={m} type="button" className="chip accent" onClick={() => onRemove(m)} aria-label={`Retirer ${muscleLabel(m)}`}>
+          {muscleLabel(m)} <Icon name="close" size={14} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Schéma en grand, une vue à la fois, pour viser les petits muscles. */
+function MuscleZoom({ muscles, onToggle, onClose }: { muscles: MuscleKey[]; onToggle: (key: MuscleKey) => void; onClose: () => void }) {
+  const [view, setView] = useState<"face" | "dos">("face");
+  return (
+    <div className="sheet-veil" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Muscles sollicités" style={{ height: "92dvh", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="choices" role="radiogroup" aria-label="Vue">
+            {(["face", "dos"] as const).map((v) => (
+              <button key={v} type="button" role="radio" aria-checked={view === v} className={view === v ? "chip on" : "chip"} onClick={() => setView(v)}>
+                {v === "face" ? "Face" : "Dos"}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="round" onClick={onClose} aria-label="Fermer"><Icon name="close" size={18} /></button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "grid", placeItems: "center", margin: "10px 0" }}>
+          <BodyMap view={view} highlight={muscles} height={560} onToggle={onToggle} label={`Vue de ${view}, touche un muscle pour le sélectionner`} style={{ height: "100%", width: "auto", maxHeight: 560 }} />
+        </div>
+        <SelectedMuscles muscles={muscles} onRemove={onToggle} />
+        <button type="button" className="btn wide" style={{ marginTop: 16, flex: "none" }} onClick={onClose}>
+          <Icon name="check" size={20} /> Valider
+        </button>
+      </div>
+    </div>
   );
 }

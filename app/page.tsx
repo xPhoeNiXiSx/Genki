@@ -13,7 +13,7 @@ import { TabBar } from "./ui/tab-bar";
 import { WeekSuns } from "./ui/week-suns";
 
 const SHORTCUTS: { href: string; label: string; icon: IconName; style: string }[] = [
-  { href: "/programmes", label: "Programmes", icon: "list", style: "galet ink" },
+  { href: "/programmes", label: "Séances", icon: "list", style: "galet ink" },
   { href: "/exercices", label: "Exercices", icon: "dumbbell", style: "galet alt" },
   { href: "/metronome", label: "Métronome", icon: "metronome", style: "galet volt alt" },
   { href: "/suivi", label: "Suivi", icon: "chart", style: "galet" },
@@ -37,7 +37,7 @@ export default async function HomePage() {
       <Link href="/compte" className="round" aria-label="Réglages" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
         <Icon name="settings" size={20} />
       </Link>
-      <p className="katakana" aria-hidden="true" style={{ right: 78, fontSize: 44 }}>ゲンキ</p>
+      <p className="katakana under-button" aria-hidden="true">ゲンキ</p>
 
       <header>
         <Logo />
@@ -49,7 +49,7 @@ export default async function HomePage() {
       <div style={{ position: "relative" }}>
         <article className="bib tilted">
           <div className="bib-band">
-            <span className="label">{next ? "Séance du jour" : "Pas encore de programme"}</span>
+            <span className="label">{next ? "Séance du jour" : "Pas encore de séance"}</span>
           </div>
           <div className="bib-body" style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, minHeight: 156 }}>
             {next ? (
@@ -72,7 +72,7 @@ export default async function HomePage() {
               </>
             ) : (
               <p style={{ margin: 0, alignSelf: "center" }}>
-                Tes programmes apparaîtront ici, prêts à lancer.
+                Tes séances apparaîtront ici, prêts à lancer.
               </p>
             )}
           </div>

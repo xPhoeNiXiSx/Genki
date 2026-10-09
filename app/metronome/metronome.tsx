@@ -57,16 +57,16 @@ export function Metronome() {
   const fill = ((bpm - MIN_BPM) / (MAX_BPM - MIN_BPM)) * 100;
 
   return (
-    <main className="screen bare">
+    <main className="screen bare" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <Lanes centered />
-      <p className="katakana" aria-hidden="true" style={{ right: 78, fontSize: 44 }}>リズム</p>
+      <p className="katakana under-button" aria-hidden="true">リズム</p>
       <div className="top-bar" style={{ justifyContent: "flex-end" }}>
         <button type="button" className="round" onClick={close} aria-label="Fermer le métronome"><Icon name="close" size={18} /></button>
       </div>
       <h1 className="display" style={{ fontSize: 34, marginTop: 18 }}>Métronome</h1>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 15 }}>Cale ta foulée sur la cadence</p>
 
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, height: 40, marginTop: 34 }} aria-hidden="true">
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 22, height: 40, flex: "none", marginTop: "clamp(8px, 3dvh, 34px)" }} aria-hidden="true">
         {[0, 1, 2, 3].map((i) => {
           const on = running ? i === beat : i === 0;
           return (
@@ -75,10 +75,10 @@ export function Metronome() {
         })}
       </div>
 
-      <p className="display" style={{ fontSize: 120, lineHeight: 1, textAlign: "center", marginTop: 10 }} aria-live="polite">{bpm}</p>
+      <p className="display" style={{ fontSize: "clamp(84px, 15dvh, 120px)", lineHeight: 1, textAlign: "center", marginTop: 10 }} aria-live="polite">{bpm}</p>
       <p className="mono muted" style={{ textAlign: "center", margin: "8px 0 0", fontSize: 13 }}>bpm · pas par minute</p>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: 50, marginTop: 24 }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: 50, marginTop: "clamp(12px, 2.5dvh, 24px)" }}>
         <button type="button" className="round" style={{ width: 64, height: 64 }} onClick={() => change(bpm - 1)} aria-label="Ralentir d'un battement"><Icon name="minus" size={24} /></button>
         <button type="button" className="round" style={{ width: 64, height: 64 }} onClick={() => change(bpm + 1)} aria-label="Accélérer d'un battement"><Icon name="plus" size={24} /></button>
       </div>
@@ -91,15 +91,15 @@ export function Metronome() {
         onChange={(e) => change(Number(e.target.value))}
         aria-label="Tempo"
         className="tempo"
-        style={{ width: "100%", marginTop: 28, background: `linear-gradient(to right, var(--volt) ${fill}%, var(--soft) ${fill}%)` }}
+        style={{ width: "100%", flex: "none", marginTop: "clamp(14px, 3dvh, 28px)", background: `linear-gradient(to right, var(--volt) ${fill}%, var(--soft) ${fill}%)` }}
       />
       <div className="mono muted" style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
         <span>{MIN_BPM}</span>
         <span>{MAX_BPM}</span>
       </div>
 
-      <p className="label" style={{ margin: "20px 0 10px", opacity: 0.7 }}>Préréglages</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+      <p className="label" style={{ margin: "clamp(12px, 2.5dvh, 20px) 0 10px", opacity: 0.7 }}>Préréglages</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 20 }}>
         {PRESETS.map((v, i) => (
           <button
             key={v}
@@ -113,7 +113,7 @@ export function Metronome() {
         ))}
       </div>
 
-      <button type="button" className="btn volt wide" style={{ marginTop: 20, fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20 }} onClick={toggle}>
+      <button type="button" className="btn volt wide" style={{ marginTop: "auto", flex: "none", fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20 }} onClick={toggle}>
         <Icon name={running ? "pause" : "play"} size={20} strokeWidth={3} /> {running ? "Arrêter" : "Lancer"}
       </button>
     </main>

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { sinceLabel } from "@/lib/dates";
-import { formatClock, formatLength } from "@/lib/duration";
-import { getProgram, listPrograms, roundSeconds } from "@/lib/programs";
+import { formatClock } from "@/lib/duration";
+import { getProgram, listPrograms, stepBlocks, totalSeconds } from "@/lib/programs";
 
 import { databaseBlocker } from "../../db-screens";
 import { Icon } from "../../ui/icons";
@@ -24,9 +24,10 @@ export default async function ProgramPage({ params }: { params: Promise<{ id: st
   const summaries = await listPrograms();
   const index = summaries.findIndex((p) => p.id === program.id);
   const band = index === 0 ? "Séance du jour" : sinceLabel(summaries[index]?.lastDoneAt ?? null);
-  const perRound = roundSeconds(program.steps);
-  const total = perRound * program.rounds;
-  const meta = [program.category, `${program.steps.length} étape${program.steps.length > 1 ? "s" : ""}`, program.rounds > 1 ? `${program.rounds} tours` : null]
+  const total = totalSeconds(program.steps);
+  const blocks = stepBlocks(program.steps);
+  const loops = blocks.filter((b) => b.loop).length;
+  const meta = [program.category, `${program.steps.length} étape${program.steps.length > 1 ? "s" : ""}`, loops > 0 ? `${loops} boucle${loops > 1 ? "s" : ""}` : null]
     .filter(Boolean)
     .join(" · ");
 
@@ -34,7 +35,7 @@ export default async function ProgramPage({ params }: { params: Promise<{ id: st
     <main className="screen bare">
       <Lanes />
       <div className="top-bar">
-        <Link href="/programmes" className="round" aria-label="Retour aux programmes"><Icon name="back" size={20} /></Link>
+        <Link href="/programmes" className="round" aria-label="Retour aux séances"><Icon name="back" size={20} /></Link>
         <details style={{ position: "relative" }}>
           <summary className="round" aria-label="Plus d'actions" style={{ listStyle: "none" }}><Icon name="more" size={20} /></summary>
           <div className="galet" style={{ position: "absolute", right: 0, top: 52, zIndex: 20, padding: 8, display: "grid", gap: 4, minWidth: 210, borderRadius: 20, boxShadow: "0 10px 24px rgba(26,26,29,.15)" }}>
@@ -85,19 +86,31 @@ export default async function ProgramPage({ params }: { params: Promise<{ id: st
           <span className="display" style={{ fontSize: 24 }}>{program.steps.length}</span>
         </div>
         <div className="stat">
-          <span className="label">Tours</span>
-          <span className="display" style={{ fontSize: 24 }}>×{program.rounds}</span>
+          <span className="label">Boucles</span>
+          <span className="display" style={{ fontSize: 24 }}>{loops}</span>
         </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "24px 0 10px" }}>
-        <span className="label" style={{ color: "var(--grey)" }}>Étapes{program.rounds > 1 ? " · un tour" : ""}</span>
-        {program.rounds > 1 ? <span className="mono muted" style={{ fontSize: 11 }}>≈ {formatLength(perRound)} / tour</span> : null}
+        <span className="label" style={{ color: "var(--grey)" }}>Étapes</span>
       </div>
       <div style={{ display: "grid", gap: 8 }}>
-        {program.steps.map((step, i) => (
-          <StepRow key={i} kind={step.kind} n={i + 1} name={step.name} muscles={step.muscles} durationSeconds={step.durationSeconds} />
-        ))}
+        {blocks.map((block) => {
+          const rows = block.steps.map((step) => {
+            const i = program.steps.indexOf(step);
+            return <StepRow key={i} kind={step.kind} n={i + 1} name={step.name} muscles={step.muscles} durationSeconds={step.durationSeconds} reps={step.reps} />;
+          });
+          if (!block.loop) return rows;
+          return (
+            <section key={`loop-${program.steps.indexOf(block.steps[0])}`} aria-label={`Boucle répétée ${block.loop.rounds} fois`} style={{ border: "1.5px solid var(--ink)", borderRadius: 26, padding: "10px 8px 8px", display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
+                <span className="label">Boucle</span>
+                <span className="chip on" style={{ height: 28, fontSize: 13 }}>×{block.loop.rounds}</span>
+              </div>
+              {rows}
+            </section>
+          );
+        })}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, marginTop: 22, position: "sticky", bottom: "calc(env(safe-area-inset-bottom) + 14px)" }}>

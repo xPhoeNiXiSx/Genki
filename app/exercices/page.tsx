@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { bestView } from "@/lib/anatomy";
-import { listExercises } from "@/lib/exercises";
+import { countInactiveExercises, listExercises } from "@/lib/exercises";
 
 import { databaseBlocker } from "../db-screens";
 import { BodyMap } from "../ui/body-map";
@@ -11,21 +11,23 @@ import { TabBar } from "../ui/tab-bar";
 
 const TILE_STYLES = ["galet ink", "galet alt", "galet alt", "galet volt", "galet", "galet alt"];
 
-export default async function ExercisesPage({ searchParams }: { searchParams: Promise<{ cat?: string; q?: string }> }) {
+export default async function ExercisesPage({ searchParams }: { searchParams: Promise<{ cat?: string; q?: string; desactives?: string }> }) {
   const blocked = await databaseBlocker();
   if (blocked) return blocked;
 
-  const { cat, q } = await searchParams;
-  const all = await listExercises();
+  const { cat, q, desactives } = await searchParams;
+  const inactive = desactives === "1";
+  const [all, inactiveCount] = await Promise.all([listExercises({ inactive }), countInactiveExercises()]);
   const categories = [...new Set(all.map((e) => e.category))];
   const needle = q?.trim().toLowerCase() ?? "";
   const shown = all.filter(
     (e) => (!cat || e.category === cat) && (!needle || e.name.toLowerCase().includes(needle)),
   );
-  const href = (c?: string) => {
+  const href = (c?: string, showInactive = inactive) => {
     const params = new URLSearchParams();
     if (c) params.set("cat", c);
     if (q) params.set("q", q);
+    if (showInactive) params.set("desactives", "1");
     const s = params.toString();
     return s ? `/exercices?${s}` : "/exercices";
   };
@@ -38,11 +40,12 @@ export default async function ExercisesPage({ searchParams }: { searchParams: Pr
       </Link>
       <h1 className="display title">Exercices</h1>
       <p className="subtitle">
-        エクササイズ · {all.length} exercice{all.length > 1 ? "s" : ""}
+        エクササイズ · {all.filter((e) => e.active).length} exercice{all.filter((e) => e.active).length > 1 ? "s" : ""}
       </p>
 
       <form action="/exercices" style={{ marginTop: 20, position: "relative" }}>
         {cat ? <input type="hidden" name="cat" value={cat} /> : null}
+        {inactive ? <input type="hidden" name="desactives" value="1" /> : null}
         <span style={{ position: "absolute", left: 18, top: 15, color: "var(--grey)" }}><Icon name="search" size={18} /></span>
         <input
           type="search"
@@ -59,14 +62,20 @@ export default async function ExercisesPage({ searchParams }: { searchParams: Pr
         {categories.map((c) => (
           <Link key={c} href={href(c)} className={cat === c ? "chip on" : "chip"}>{c}</Link>
         ))}
+        {inactiveCount > 0 ? (
+          <Link href={href(cat, !inactive)} className={inactive ? "chip on" : "chip dashed"} style={{ flex: "none" }}>
+            Désactivés · {inactiveCount}
+          </Link>
+        ) : null}
       </nav>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 18 }}>
         {shown.map((e, i) => {
           const style = TILE_STYLES[i % TILE_STYLES.length];
-          const tone = style.includes("ink") ? "ink" : style.includes("volt") ? "volt" : "light";
+          const tone = !e.active ? "light" : style.includes("ink") ? "ink" : style.includes("volt") ? "volt" : "light";
           return (
-            <Link key={e.id} href={`/exercices/${e.id}`} className={style} style={{ minHeight: 150, display: "grid", gridTemplateRows: "1fr auto", position: "relative" }}>
+            <Link key={e.id} href={`/exercices/${e.id}`} className={e.active ? style : "galet"} style={{ minHeight: 150, display: "grid", gridTemplateRows: "1fr auto", position: "relative", ...(e.active ? {} : { borderStyle: "dashed", background: "transparent", opacity: 0.6 }) }}>
+              {e.active ? null : <span className="mono" style={{ position: "absolute", top: 12, left: 14, fontSize: 10, letterSpacing: "0.08em" }}>DÉSACTIVÉ</span>}
               <span style={{ position: "absolute", top: 8, right: 14 }}>
                 <BodyMap view={bestView(e.muscles)} highlight={e.muscles} tone={tone} height={84} />
               </span>

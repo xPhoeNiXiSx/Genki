@@ -33,7 +33,7 @@ export async function saveProgramAction(_state: ProgramFormState, form: FormData
 
   let target: string;
   if (id) {
-    if (!(await updateProgram(id, parsed.input))) return { error: "Ce programme n'existe plus." };
+    if (!(await updateProgram(id, parsed.input))) return { error: "Cette séance n'existe plus." };
     target = id;
   } else {
     target = await createProgram(parsed.input);
