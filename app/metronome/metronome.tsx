@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { createMetronome, keepScreenAwake, unlockAudio, type Metronome as Engine } from "@/lib/audio";
@@ -8,7 +8,6 @@ import { DEFAULT_BPM, MAX_BPM, MIN_BPM, clampBpm } from "@/lib/metronome";
 
 import { Icon } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
-import { TabBar } from "../ui/tab-bar";
 
 const PRESETS = [160, 170, 180, 190];
 
@@ -50,14 +49,19 @@ export function Metronome() {
   }
 
   const change = (value: number) => setBpm(clampBpm(value));
+
+  // Modale : on revient à l'écran d'où l'on vient, ou à l'accueil si la page
+  // a été ouverte directement.
+  const router = useRouter();
+  const close = () => (window.history.length > 1 ? router.back() : router.push("/"));
   const fill = ((bpm - MIN_BPM) / (MAX_BPM - MIN_BPM)) * 100;
 
   return (
-    <main className="screen">
+    <main className="screen bare">
       <Lanes centered />
-      <p className="katakana" aria-hidden="true">リズム</p>
-      <div className="top-bar">
-        <Link href="/" className="round" aria-label="Retour à l'accueil"><Icon name="back" size={20} /></Link>
+      <p className="katakana" aria-hidden="true" style={{ right: 78, fontSize: 44 }}>リズム</p>
+      <div className="top-bar" style={{ justifyContent: "flex-end" }}>
+        <button type="button" className="round" onClick={close} aria-label="Fermer le métronome"><Icon name="close" size={18} /></button>
       </div>
       <h1 className="display" style={{ fontSize: 34, marginTop: 18 }}>Métronome</h1>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 15 }}>Cale ta foulée sur la cadence</p>
@@ -112,8 +116,6 @@ export function Metronome() {
       <button type="button" className="btn volt wide" style={{ marginTop: 20, fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20 }} onClick={toggle}>
         <Icon name={running ? "pause" : "play"} size={20} strokeWidth={3} /> {running ? "Arrêter" : "Lancer"}
       </button>
-
-      <TabBar />
     </main>
   );
 }

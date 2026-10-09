@@ -15,7 +15,7 @@ const TABS: { href: string; label: string; icon: IconName }[] = [
 /** Menu flottant : l'onglet actif s'élargit en pastille volt avec son libellé. */
 export function TabBar() {
   const pathname = usePathname();
-  const active = (href: string) => (href === "/" ? pathname === "/" || pathname === "/metronome" : pathname.startsWith(href));
+  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   return (
     <nav className="tabbar" aria-label="Navigation principale">
