@@ -370,6 +370,12 @@ textarea {
   min-height: 44px;
 }
 
+/* La barre du haut porte des menus (« … ») : ils passent au-dessus du
+   reste de la page, qui vient après elle dans le flux. */
+.screen > .top-bar {
+  z-index: 10;
+}
+
 :focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
