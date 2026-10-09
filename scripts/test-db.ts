@@ -150,15 +150,12 @@ async function exercisesAndPrograms() {
   assert.ok("error" in parseExerciseForm(form([["name", " "], ["category", "Musculaire"]])));
   ok("un exercice sans nom, ou avec une image non https, est refusé");
 
-  const withImage = parseExerciseForm(form([["name", "Planche"], ["category", "Musculaire"], ["imageUrl", "data:image/jpeg;base64,/9j/4AAQ=="], ["equipment", "Banc"], ["measure", "reps"], ["target", "12"]]));
+  const withImage = parseExerciseForm(form([["name", "Planche"], ["category", "Musculaire"], ["imageUrl", "data:image/jpeg;base64,/9j/4AAQ=="], ["equipment", "Banc"]]));
   assert.ok("input" in withImage);
   assert.equal(withImage.input.imageUrl, "data:image/jpeg;base64,/9j/4AAQ==");
   assert.equal(withImage.input.equipment, "Banc");
-  assert.equal(withImage.input.measure, "reps");
-  assert.equal(withImage.input.target, 12);
   assert.ok("error" in parseExerciseForm(form([["name", "X"], ["category", "Musculaire"], ["imageUrl", "data:text/html;base64,PHA+"]])));
-  assert.ok("error" in parseExerciseForm(form([["name", "X"], ["category", "Musculaire"], ["measure", "reps"], ["target", "0"]])));
-  ok("une photo réduite est acceptée en data URL ; un exercice se mesure au temps ou aux répétitions");
+  ok("une photo réduite est acceptée en data URL");
 
   const squat = await createExercise(parsed.input);
   const plank = await createExercise({
@@ -168,8 +165,6 @@ async function exercisesAndPrograms() {
     category: "Musculaire",
     equipment: "Tapis",
     muscles: ["abdominaux"],
-    measure: "time",
-    target: 60,
   });
   assert.equal((await listExercises()).length, 2);
   assert.ok(await updateExercise(plank, { ...(await getExercise(plank))!, name: "Planche" }));
@@ -377,7 +372,7 @@ async function settingsAndBackup() {
   assert.equal(validSetting("voice", "oui"), null);
   ok("les réglages gardent leurs valeurs par défaut et n'enregistrent que des valeurs valides");
 
-  const ex = await createExercise({ name: "Gainage latéral", description: null, imageUrl: null, category: "Musculaire", equipment: null, muscles: ["obliques"], measure: "reps", target: 12 });
+  const ex = await createExercise({ name: "Gainage latéral", description: null, imageUrl: null, category: "Musculaire", equipment: null, muscles: ["obliques"] });
   const prog = await createProgram({ name: "Sauvegarde", category: "Renfo", notes: null, prepSeconds: 5, sound: "bip", steps: [{ kind: "exercise", exerciseId: ex, label: null, durationSeconds: 36, reps: 12, loopGroup: 1, loopRounds: 2 }, { kind: "rest", exerciseId: null, label: null, durationSeconds: 10, reps: null, loopGroup: 1, loopRounds: 2 }] });
   await recordWorkout({ programId: prog, programName: "Sauvegarde", startedAt: new Date("2026-10-08T07:00:00Z"), durationSeconds: 80, completed: true });
 
@@ -392,7 +387,6 @@ async function settingsAndBackup() {
   const restored = await getProgram(prog);
   assert.deepEqual(restored?.steps.map((s) => s.loopRounds), [2, 2]);
   assert.equal(restored?.steps[0].reps, 12);
-  assert.equal((await getExercise(ex))?.target, 12);
   assert.ok((await listCatalog("equipment")).some((e) => e.name === "Tapis de sol"));
   assert.deepEqual(restored?.steps.map((s) => s.name), ["Gainage latéral", "Récup"]);
   assert.deepEqual(restored?.steps[0].muscles, ["obliques"]);

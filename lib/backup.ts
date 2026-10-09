@@ -19,7 +19,7 @@ const TABLES: { table: string; columns: Column[] }[] = [
     columns: [
       { name: "id" }, { name: "name" }, { name: "description", fallback: null }, { name: "image_url", fallback: null },
       { name: "category" }, { name: "equipment", fallback: null }, { name: "muscles", fallback: [] },
-      { name: "measure", fallback: "time" }, { name: "target", fallback: null }, { name: "active", fallback: true },
+      { name: "active", fallback: true },
       { name: "created_at" }, { name: "updated_at" },
     ],
   },

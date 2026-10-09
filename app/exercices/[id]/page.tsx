@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { formatClock } from "@/lib/duration";
 import { getExercise } from "@/lib/exercises";
 import { muscleLabel } from "@/lib/muscles";
 
@@ -80,7 +79,6 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
 
       <p className="mono muted" style={{ marginTop: 18, fontSize: 11, letterSpacing: "0.06em" }}>
         MATÉRIEL · {(exercise.equipment ?? "aucun").toUpperCase()}
-        {exercise.target ? ` · ${exercise.measure === "reps" ? `${exercise.target} RÉPÉTITIONS` : formatClock(exercise.target)}` : ""}
       </p>
     </main>
   );

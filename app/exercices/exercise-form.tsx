@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useRef, useState } from "react";
 
 import type { CatalogEntry } from "@/lib/catalog";
-import type { Exercise, Measure } from "@/lib/exercises";
+import type { Exercise } from "@/lib/exercises";
 import { normalizeMuscles, muscleLabel, type MuscleKey } from "@/lib/muscles";
 
 import { BodyMap } from "../ui/body-map";
@@ -46,7 +46,6 @@ export function ExerciseForm({
   const [imageError, setImageError] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(exercise?.category ?? categories[0]?.name ?? null);
   const [equipment, setEquipment] = useState<string | null>(exercise?.equipment ?? null);
-  const [measure, setMeasure] = useState<Measure>(exercise?.measure ?? "time");
   const [zoom, setZoom] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -113,34 +112,6 @@ export function ExerciseForm({
 
       <span className="field-label">Matériel</span>
       <CatalogPicker kind="equipment" title="Matériel" name="equipment" entries={equipmentList} value={equipment} onChange={setEquipment} noneLabel="Aucun" />
-
-      <span className="field-label">Mesure</span>
-      <input type="hidden" name="measure" value={measure} />
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div className="choices" role="radiogroup" aria-label="Mesure" style={{ flex: "none" }}>
-          {(["time", "reps"] as const).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={measure === m} className={measure === m ? "chip on" : "chip"} onClick={() => setMeasure(m)}>
-              {m === "time" ? "Temps" : "Répétitions"}
-            </button>
-          ))}
-        </div>
-        <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            key={measure}
-            name="target"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            className="input"
-            style={{ height: 44, minWidth: 0, padding: "0 14px", textAlign: "right" }}
-            defaultValue={exercise && exercise.measure === measure ? (exercise.target ?? "") : ""}
-            placeholder={measure === "time" ? "45" : "12"}
-            aria-label={measure === "time" ? "Durée en secondes" : "Nombre de répétitions"}
-          />
-          <span className="mono muted" style={{ fontSize: 13 }}>{measure === "time" ? "s" : "rép."}</span>
-        </label>
-      </div>
-      <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>Proposé quand tu ajoutes l&apos;exercice à une séance.</p>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="field-label">Muscles sollicités</span>

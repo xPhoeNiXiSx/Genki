@@ -59,7 +59,7 @@ export function Metronome() {
   return (
     <main className="screen bare" style={{ height: "100dvh", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <Lanes centered />
-      <p className="katakana under-button" aria-hidden="true">リズム</p>
+      <p className="katakana" aria-hidden="true">リズム</p>
       <div className="top-bar" style={{ justifyContent: "flex-end" }}>
         <button type="button" className="round" onClick={close} aria-label="Fermer le métronome"><Icon name="close" size={18} /></button>
       </div>

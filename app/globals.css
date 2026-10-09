@@ -125,11 +125,6 @@ textarea {
   text-wrap: balance;
 }
 
-/* Katakana sous un bouton rond en haut à droite. */
-.katakana.under-button {
-  top: calc(env(safe-area-inset-top) + 80px);
-  font-size: 44px;
-}
 
 .title {
   font-size: 34px;

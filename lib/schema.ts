@@ -79,11 +79,10 @@ export const SCHEMA_STATEMENTS: string[] = [
   // que l'on touche « Fait ».
   `alter table program_steps add column if not exists reps integer check (reps > 0)`,
 
-  // Un exercice se mesure au temps ou aux répétitions ; la valeur sert de
-  // proposition quand on l'ajoute à une séance. Un exercice désactivé reste
-  // dans les séances qui l'utilisent mais n'est plus proposé.
-  `alter table exercises add column if not exists measure text not null default 'time'`,
-  `alter table exercises add column if not exists target integer check (target > 0)`,
+  // Un exercice désactivé reste dans les séances qui l'utilisent mais n'est
+  // plus proposé. (Les colonnes measure et target, posées un temps sur les
+  // exercices, sont restées en base sans usage : temps et répétitions se
+  // règlent dans la séance.)
   `alter table exercises add column if not exists active boolean not null default true`,
 
   // Listes modifiables : catégories d'exercice, matériel, catégories de

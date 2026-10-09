@@ -56,12 +56,9 @@ const DEFAULT_DURATION: Record<StepKind, number> = { exercise: 45, rest: 15, war
 
 let nextUid = 1;
 
-/** Valeurs proposées pour un exercice : sa mesure et sa cible. */
+/** Choisir un exercice garde le temps ou les répétitions déjà réglés. */
 function exerciseDraft(exercise: Exercise | undefined, base: Draft): Draft {
-  if (!exercise) return base;
-  return exercise.measure === "reps"
-    ? { ...base, exerciseId: exercise.id, reps: exercise.target ?? DEFAULT_REPS }
-    : { ...base, exerciseId: exercise.id, reps: null, durationSeconds: exercise.target ?? DEFAULT_DURATION.exercise };
+  return exercise ? { ...base, exerciseId: exercise.id } : base;
 }
 
 /**

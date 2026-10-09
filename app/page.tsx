@@ -37,7 +37,7 @@ export default async function HomePage() {
       <Link href="/compte" className="round" aria-label="Réglages" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24, zIndex: 2 }}>
         <Icon name="settings" size={20} />
       </Link>
-      <p className="katakana under-button" aria-hidden="true">ゲンキ</p>
+      <p className="katakana" aria-hidden="true">ゲンキ</p>
 
       <header>
         <Logo />

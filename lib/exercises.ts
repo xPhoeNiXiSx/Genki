@@ -1,12 +1,5 @@
 import { query } from "@/lib/db";
-import { MAX_STEP_SECONDS } from "@/lib/duration";
 import { normalizeMuscles, type MuscleKey } from "@/lib/muscles";
-
-/** Un exercice se mesure au temps (secondes) ou aux répétitions. */
-export const MEASURES = ["time", "reps"] as const;
-export type Measure = (typeof MEASURES)[number];
-
-export const MAX_REPS = 500;
 
 export type Exercise = {
   id: string;
@@ -16,9 +9,6 @@ export type Exercise = {
   category: string;
   equipment: string | null;
   muscles: MuscleKey[];
-  measure: Measure;
-  /** Durée en secondes ou nombre de répétitions proposé, selon la mesure. */
-  target: number | null;
   active: boolean;
 };
 
@@ -32,8 +22,6 @@ type Row = {
   category: string;
   equipment: string | null;
   muscles: string[];
-  measure: string;
-  target: number | null;
   active: boolean;
 };
 
@@ -46,8 +34,6 @@ function fromRow(row: Row): Exercise {
     category: row.category,
     equipment: row.equipment,
     muscles: normalizeMuscles(row.muscles),
-    measure: row.measure === "reps" ? "reps" : "time",
-    target: row.target,
     active: row.active,
   };
 }
@@ -89,18 +75,6 @@ export function parseExerciseForm(
     .getAll("muscles")
     .filter((value): value is string => typeof value === "string");
 
-  const measure: Measure = form.get("measure") === "reps" ? "reps" : "time";
-  const rawTarget = blankToNull(form.get("target"));
-  const target = rawTarget === null ? null : Number(rawTarget);
-  if (target !== null && (!Number.isInteger(target) || target <= 0)) {
-    return { error: measure === "reps" ? "Nombre de répétitions invalide." : "Durée invalide." };
-  }
-  if (target !== null && measure === "reps" && target > MAX_REPS) {
-    return { error: `Pas plus de ${MAX_REPS} répétitions.` };
-  }
-  if (target !== null && measure === "time" && target > MAX_STEP_SECONDS) {
-    return { error: "Une durée ne dépasse pas 3 heures." };
-  }
 
   return {
     input: {
@@ -110,13 +84,11 @@ export function parseExerciseForm(
       description: blankToNull(form.get("description")),
       equipment: blankToNull(form.get("equipment")),
       muscles: normalizeMuscles(muscles),
-      measure,
-      target,
     },
   };
 }
 
-const COLUMNS = `id, name, description, image_url, category, equipment, muscles, measure, target, active`;
+const COLUMNS = `id, name, description, image_url, category, equipment, muscles, active`;
 
 /** Par défaut, les exercices désactivés sont tenus à l'écart. */
 export async function listExercises({ inactive = false }: { inactive?: boolean } = {}): Promise<Exercise[]> {
@@ -173,8 +145,8 @@ export async function getExercise(id: string): Promise<Exercise | null> {
 export async function createExercise(input: ExerciseInput): Promise<string> {
   await rememberCatalog(input);
   const rows = await query<{ id: string }>(
-    `insert into exercises (name, description, image_url, category, equipment, muscles, measure, target)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
+    `insert into exercises (name, description, image_url, category, equipment, muscles)
+     values ($1, $2, $3, $4, $5, $6)
      returning id`,
     [
       input.name,
@@ -183,8 +155,6 @@ export async function createExercise(input: ExerciseInput): Promise<string> {
       input.category,
       input.equipment,
       input.muscles,
-      input.measure,
-      input.target,
     ],
   );
   return rows[0].id;
@@ -195,7 +165,7 @@ export async function updateExercise(id: string, input: ExerciseInput): Promise<
   const rows = await query<{ id: string }>(
     `update exercises
         set name = $2, description = $3, image_url = $4, category = $5,
-            equipment = $6, muscles = $7, measure = $8, target = $9, updated_at = now()
+            equipment = $6, muscles = $7, updated_at = now()
       where id = $1
       returning id`,
     [
@@ -206,8 +176,6 @@ export async function updateExercise(id: string, input: ExerciseInput): Promise<
       input.category,
       input.equipment,
       input.muscles,
-      input.measure,
-      input.target,
     ],
   );
   return rows.length > 0;
