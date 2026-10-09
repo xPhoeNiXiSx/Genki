@@ -35,6 +35,6 @@ export const config = {
   /** Tout sauf les fichiers servis par Next, les icônes et le logo : la page de
    *  connexion en a besoin avant toute session. */
   matcher: [
-    "/((?!_next/static|_next/image|icon.svg|apple-icon.png|favicon.ico|manifest.webmanifest|icon-192.png|icon-512.png|genki-logotype.svg).*)",
+    "/((?!_next/static|_next/image|icon.svg|apple-icon.png|favicon.ico|manifest.webmanifest|icon-192.png|icon-512.png|genki-logotype.svg|genki-enso.svg).*)",
   ],
 };

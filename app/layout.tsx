@@ -38,7 +38,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* Écran de démarrage : l'ensō 元気 sur fond encre, qui s'efface de
+            lui-même. En CSS seul, sans script ; posé dans la mise en page
+            commune, il ne se joue qu'à l'ouverture, pas à chaque navigation. */}
+        <div className="splash" aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/genki-enso.svg" alt="" width={168} height={168} />
+        </div>
+        {children}
+      </body>
     </html>
   );
 }
