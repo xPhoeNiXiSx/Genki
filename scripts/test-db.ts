@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import { isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
+import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
   MAX_FAILURES,
   clearFailures,
@@ -80,6 +80,14 @@ async function main() {
 
   await runMigrations();
   ok("le schéma est idempotent");
+
+  // Une base restée à une version antérieure : il lui manque les derniers ajouts.
+  await query(`drop table settings`);
+  await query(`alter table workout_sessions drop column steps_total`);
+  assert.equal(await isSchemaReady(), false);
+  await ensureSchema();
+  assert.equal(await isSchemaReady(), true);
+  ok("une base en retard est détectée et mise à jour d'elle-même");
 
   await exercisesAndPrograms();
   await workouts();

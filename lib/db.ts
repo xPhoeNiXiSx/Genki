@@ -58,10 +58,26 @@ export async function runMigrations(): Promise<void> {
   }
 }
 
-/** `true` si la table principale existe déjà. */
+/**
+ * `true` si le schéma est à jour : on teste la table et la colonne ajoutées
+ * en dernier dans `lib/schema.ts`. À faire suivre à chaque nouvel ajout.
+ */
 export async function isSchemaReady(): Promise<boolean> {
   const rows = await query<{ present: boolean }>(
-    `select to_regclass('public.exercises') is not null as present`,
+    `select to_regclass('public.settings') is not null
+            and exists (select 1 from information_schema.columns
+                         where table_schema = 'public'
+                           and table_name = 'workout_sessions'
+                           and column_name = 'steps_total') as present`,
   );
   return rows[0]?.present === true;
+}
+
+/**
+ * Met la base à jour si besoin. Les migrations sont idempotentes et
+ * n'effacent rien : on peut les lancer sans demander.
+ */
+export async function ensureSchema(): Promise<void> {
+  if (await isSchemaReady()) return;
+  await runMigrations();
 }

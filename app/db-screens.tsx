@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { connection } from "next/server";
 
-import { isSchemaReady } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
 
 import { Logo } from "./ui/logo";
 
@@ -44,7 +43,8 @@ export async function databaseBlocker(): Promise<React.ReactElement | null> {
   }
 
   try {
-    if (await isSchemaReady()) return null;
+    await ensureSchema();
+    return null;
   } catch (error) {
     return (
       <Notice title="Base injoignable">
@@ -53,13 +53,4 @@ export async function databaseBlocker(): Promise<React.ReactElement | null> {
       </Notice>
     );
   }
-
-  return (
-    <Notice title="Base à initialiser">
-      <p style={{ margin: 0 }}>
-        Ouvre <Link href="/compte" style={{ textDecoration: "underline" }}>Mon compte</Link> et lance{" "}
-        <strong>Appliquer les migrations</strong>.
-      </p>
-    </Notice>
-  );
 }
