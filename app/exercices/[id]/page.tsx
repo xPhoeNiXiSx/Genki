@@ -24,6 +24,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
       <Lanes />
       <div className="top-bar">
         <Link href="/exercices" className="round" aria-label="Retour aux exercices"><Icon name="back" size={20} /></Link>
+        <Link href={`/exercices/${exercise.id}/modifier`} className="round" aria-label="Modifier l'exercice"><Icon name="edit" size={18} /></Link>
       </div>
 
       <span className="tag" style={{ marginTop: 18 }}>{exercise.category}</span>

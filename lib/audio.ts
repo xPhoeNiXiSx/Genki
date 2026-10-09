@@ -85,25 +85,65 @@ export function speak(text: string): boolean {
   return true;
 }
 
-/**
- * Joue un signal de séance. `stepName` permet d'annoncer l'étape qui démarre
- * (« Squat »), en plus du bip.
- */
-export function playCue(cue: Cue, options: { voice: boolean; stepName?: string } = { voice: true }): void {
+/** Timbres au choix : gong grave et long, bip net, cloche claire. */
+export type Tone = "gong" | "bip" | "cloche";
+
+/** Joue un timbre, à l'instant `at` de l'horloge audio. */
+export function tone(kind: Tone, at?: number, volume = 0.8): void {
+  const start = at ?? audio().currentTime;
+  if (kind === "bip") {
+    beep(1320, 0.3, start, volume);
+  } else if (kind === "gong") {
+    // Fondamentale grave et partiels inharmoniques, longue chute.
+    beep(196, 1.6, start, volume);
+    beep(392 * 1.18, 1.1, start, volume * 0.35);
+    beep(196 * 2.76, 0.8, start, volume * 0.2);
+  } else {
+    beep(1046, 0.9, start, volume * 0.7);
+    beep(2093, 0.6, start, volume * 0.3);
+  }
+}
+
+export type CueOptions = {
+  /** Bips aux changements d'étape et en fin de séance. */
+  signal: boolean;
+  /** « trois, deux, un » et annonce de l'étape. */
+  voice: boolean;
+  /** Vibration aux changements d'étape, là où c'est possible. */
+  vibration: boolean;
+  /** Timbre du changement d'étape (propre au programme). */
+  stepTone: Tone;
+  /** Timbre du décompte sans voix et de la fin (réglage général). */
+  signalTone: Tone;
+  /** Nom de l'étape qui démarre, pour l'annoncer. */
+  stepName?: string;
+};
+
+function vibrate(pattern: number | number[]) {
+  if ("vibrate" in navigator) navigator.vibrate(pattern);
+}
+
+/** Joue un signal de séance selon les réglages. */
+export function playCue(cue: Cue, options: CueOptions): void {
   switch (cue.kind) {
     case "count":
-      if (!options.voice || !speak(COUNT_WORDS[cue.value])) beep(880, 0.12);
+      if (options.voice && speak(COUNT_WORDS[cue.value])) break;
+      if (options.signal) beep(options.signalTone === "gong" ? 523 : 880, 0.12);
       break;
     case "step":
-      beep(1320, 0.35, undefined, 0.8);
+      if (options.signal) tone(options.stepTone);
+      if (options.vibration) vibrate(200);
       if (options.voice && options.stepName) {
-        // Laisse le bip se terminer avant d'annoncer l'étape.
-        setTimeout(() => speak(options.stepName as string), 400);
+        // Laisse le signal se terminer avant d'annoncer l'étape.
+        setTimeout(() => speak(options.stepName as string), options.signal ? 450 : 0);
       }
       break;
     case "end": {
-      const now = audio().currentTime;
-      [0, 0.18, 0.36].forEach((offset) => beep(1320, 0.3, now + offset, 0.8));
+      if (options.signal) {
+        const now = audio().currentTime;
+        [0, 0.25, 0.5].forEach((offset) => tone(options.signalTone, now + offset));
+      }
+      if (options.vibration) vibrate([200, 120, 200, 120, 400]);
       if (options.voice) setTimeout(() => speak("Séance terminée"), 900);
       break;
     }

@@ -32,12 +32,16 @@ import {
   duplicateProgram,
   getProgram,
   listPrograms,
-  parseProgramForm,
+  parseProgramPayload,
+  roundSeconds,
+  sessionSteps,
   updateProgram,
 } from "../lib/programs";
-import { dailyTotals, listWorkouts, recordWorkout, weeklyTotals } from "../lib/workouts";
+import { currentStreak, dailyTotals, getWorkout, listWorkouts, recordWorkout, reviewWorkout, weeklyTotals } from "../lib/workouts";
 import { BACK, FRONT, bestView } from "../lib/anatomy";
 import { MUSCLES } from "../lib/muscles";
+import { exportData, importData, parseBackup } from "../lib/backup";
+import { DEFAULT_SETTINGS, getSettings, saveSetting, validSetting } from "../lib/settings";
 import { bibDate, sinceLabel } from "../lib/dates";
 import { formatClock, formatLength, parseDuration } from "../lib/duration";
 import { normalizeMuscles } from "../lib/muscles";
@@ -79,6 +83,7 @@ async function main() {
 
   await exercisesAndPrograms();
   await workouts();
+  await settingsAndBackup();
   pureLogic();
 
   // Freinage de la connexion.
@@ -133,6 +138,13 @@ async function exercisesAndPrograms() {
   assert.ok("error" in parseExerciseForm(form([["name", " "], ["category", "Musculaire"]])));
   ok("un exercice sans nom, ou avec une image non https, est refusé");
 
+  const withImage = parseExerciseForm(form([["name", "Planche"], ["category", "Musculaire"], ["imageUrl", "data:image/jpeg;base64,/9j/4AAQ=="], ["equipment", ""], ["equipmentOther", "Banc"]]));
+  assert.ok("input" in withImage);
+  assert.equal(withImage.input.imageUrl, "data:image/jpeg;base64,/9j/4AAQ==");
+  assert.equal(withImage.input.equipment, "Banc");
+  assert.ok("error" in parseExerciseForm(form([["name", "X"], ["category", "Musculaire"], ["imageUrl", "data:text/html;base64,PHA+"]])));
+  ok("une photo réduite est acceptée en data URL, « Autre matériel » l'emporte sur les pastilles");
+
   const squat = await createExercise(parsed.input);
   const plank = await createExercise({
     name: "Gainage",
@@ -147,24 +159,38 @@ async function exercisesAndPrograms() {
   assert.equal((await getExercise(plank))?.name, "Planche");
   ok("un exercice se crée, se liste et se modifie");
 
-  const program = parseProgramForm(
-    form([
-      ["name", "Kiné genou"],
-      ["stepExercise", ""], ["stepLabel", "Échauffement"], ["stepDuration", "30"],
-      ["stepExercise", squat], ["stepLabel", "jambe gauche"], ["stepDuration", "0:45"],
-      ["stepExercise", ""], ["stepLabel", ""], ["stepDuration", ""],
-      ["stepExercise", plank], ["stepLabel", ""], ["stepDuration", "1 min"],
-    ]),
+  const program = parseProgramPayload(
+    JSON.stringify({
+      name: " Kiné genou ",
+      category: "Kiné",
+      rounds: 3,
+      prepSeconds: 5,
+      sound: "bip",
+      steps: [
+        { kind: "warmup", durationSeconds: 30 },
+        { kind: "exercise", exerciseId: squat, label: "jambe gauche", durationSeconds: 45 },
+        { kind: "exercise", exerciseId: plank, durationSeconds: 60 },
+      ],
+    }),
   );
   assert.ok("input" in program);
-  assert.equal(program.input.steps.length, 3);
+  assert.equal(program.input.name, "Kiné genou");
+  assert.equal(program.input.steps[0].label, "Échauffement");
   assert.deepEqual(program.input.steps.map((step) => step.durationSeconds), [30, 45, 60]);
-  ok("le formulaire de programme lit les étapes et ignore les lignes vides");
+  assert.equal(program.input.rounds, 3);
+  ok("l'éditeur envoie le programme, ses options et ses étapes typées");
 
-  const bad = parseProgramForm(form([["name", "X"], ["stepExercise", ""], ["stepLabel", "Repos"], ["stepDuration", "bientôt"]]));
+  const bad = parseProgramPayload({ name: "X", steps: [{ kind: "rest", durationSeconds: 0 }] });
   assert.ok("error" in bad && bad.error.startsWith("Étape 1"));
-  assert.ok("error" in parseProgramForm(form([["name", "X"]])));
-  ok("une durée illisible ou un programme sans étape est refusé, étape nommée");
+  assert.ok("error" in parseProgramPayload({ name: "X", steps: [] }));
+  assert.ok("error" in parseProgramPayload({ name: "X", rounds: 50, steps: [{ kind: "rest", durationSeconds: 10 }] }));
+  assert.ok("error" in parseProgramPayload({ name: "X", steps: [{ kind: "exercise", durationSeconds: 10 }] }));
+  assert.ok("error" in parseProgramPayload("pas du json"));
+  ok("une durée nulle, un exercice manquant ou des options hors bornes sont refusés");
+
+  assert.equal(roundSeconds(program.input.steps), 135);
+  assert.deepEqual(sessionSteps([1, 2], 3), [1, 2, 1, 2, 1, 2]);
+  ok("une séance répète les étapes d'un tour autant de fois qu'il y a de tours");
 
   const id = await createProgram(program.input);
   let saved = await getProgram(id);
@@ -174,7 +200,12 @@ async function exercisesAndPrograms() {
     "Planche",
   ]);
   assert.deepEqual(saved?.steps[1].muscles, ["fessiers", "quadriceps"]);
-  ok("un programme se relit avec ses étapes dans l'ordre, noms et muscles compris");
+  assert.deepEqual(saved?.steps.map((step) => step.kind), ["warmup", "exercise", "exercise"]);
+  assert.equal(saved?.rounds, 3);
+  assert.equal(saved?.prepSeconds, 5);
+  assert.equal(saved?.sound, "bip");
+  assert.equal(saved?.category, "Kiné");
+  ok("un programme se relit avec ses étapes dans l'ordre, types, options, noms et muscles compris");
 
   await updateProgram(id, { ...program.input, steps: program.input.steps.slice(1) });
   saved = await getProgram(id);
@@ -198,6 +229,15 @@ async function exercisesAndPrograms() {
   assert.equal(saved?.steps[1].exerciseId, null);
   assert.equal(saved?.steps[1].name, "Planche");
   ok("supprimer un exercice garde l'étape, sous le nom de l'exercice");
+
+  // Reprise des étapes antérieures au type : « Repos » devient un repos, un
+  // exercice supprimé reste un exercice.
+  await query(`insert into program_steps (program_id, position, label, duration_seconds) values ($1, 9, 'Repos', 15)`, [id]);
+  await runMigrations();
+  const kinds = await query<{ label: string; kind: string }>(`select label, kind from program_steps where program_id = $1 order by position`, [id]);
+  assert.deepEqual(kinds.map((k) => k.kind), ["exercise", "exercise", "rest"]);
+  await query(`delete from program_steps where program_id = $1 and position = 9`, [id]);
+  ok("les anciennes étapes « Repos » sont reprises en repos, sans toucher aux exercices supprimés");
 
   await deleteProgram(copy);
   assert.equal(await getProgram(copy), null);
@@ -236,9 +276,72 @@ async function workouts() {
   assert.equal(list.at(-1)?.programName, "Course");
   ok("l'historique liste les séances de la plus récente à la plus ancienne");
 
+  const reviewed = await recordWorkout({ programId: program.id, programName: program.name, startedAt: new Date("2026-10-07T06:00:00Z"), durationSeconds: 300, completed: false, stepsDone: 3, stepsTotal: 8 });
+  assert.ok(await reviewWorkout(reviewed, 4, "Genou un peu raide"));
+  const detail = await getWorkout(reviewed);
+  assert.equal(detail?.feeling, 4);
+  assert.equal(detail?.note, "Genou un peu raide");
+  assert.equal(detail?.stepsDone, 3);
+  assert.equal(detail?.stepsTotal, 8);
+  await assert.rejects(reviewWorkout(reviewed, 9, null));
+  ok("le bilan garde ressenti, note et étapes faites ; un ressenti hors de 1 à 5 est refusé");
+
+  // Séances les 4, 5, 6 et 7 octobre (heure de Paris) : série de 4 jours le
+  // 7, encore de 4 le 8 tant que rien n'est fait, rompue le 10.
+  assert.equal(await currentStreak(now), 4);
+  assert.equal(await currentStreak(new Date("2026-10-08T10:00:00Z")), 4);
+  assert.equal(await currentStreak(new Date("2026-10-10T10:00:00Z")), 0);
+  ok("la série compte les jours consécutifs d'entraînement, jusqu'à hier si rien n'est fait aujourd'hui");
+
   await deleteProgram(program.id);
   assert.ok((await listWorkouts()).every((w) => w.programName));
   ok("supprimer un programme garde l'historique lisible");
+}
+
+async function settingsAndBackup() {
+  assert.deepEqual(await getSettings(), DEFAULT_SETTINGS);
+  await saveSetting("voice", false);
+  await saveSetting("signalSound", "cloche");
+  await saveSetting("voice", false);
+  const settings = await getSettings();
+  assert.equal(settings.voice, false);
+  assert.equal(settings.signalSound, "cloche");
+  assert.equal(settings.signal, true);
+  assert.equal(validSetting("signalSound", "klaxon"), null);
+  assert.equal(validSetting("voice", "oui"), null);
+  ok("les réglages gardent leurs valeurs par défaut et n'enregistrent que des valeurs valides");
+
+  const ex = await createExercise({ name: "Gainage latéral", description: null, imageUrl: null, category: "Musculaire", equipment: null, muscles: ["obliques"] });
+  const prog = await createProgram({ name: "Sauvegarde", category: "Renfo", notes: null, rounds: 2, prepSeconds: 5, sound: "bip", steps: [{ kind: "exercise", exerciseId: ex, label: null, durationSeconds: 30 }, { kind: "rest", exerciseId: null, label: "Repos", durationSeconds: 10 }] });
+  await recordWorkout({ programId: prog, programName: "Sauvegarde", startedAt: new Date("2026-10-08T07:00:00Z"), durationSeconds: 80, completed: true });
+
+  const backup = JSON.parse(JSON.stringify(await exportData()));
+  const counts = { exercises: backup.data.exercises.length, programs: backup.data.programs.length, workouts: backup.data.workout_sessions.length };
+  await query(`delete from exercises`);
+  await saveSetting("voice", true);
+
+  const parsed = parseBackup(JSON.stringify(backup));
+  assert.ok("backup" in parsed);
+  assert.deepEqual(await importData(parsed.backup), counts);
+  const restored = await getProgram(prog);
+  assert.equal(restored?.rounds, 2);
+  assert.deepEqual(restored?.steps.map((s) => s.name), ["Gainage latéral", "Repos"]);
+  assert.deepEqual(restored?.steps[0].muscles, ["obliques"]);
+  assert.equal((await getSettings()).voice, false);
+  assert.equal((await listWorkouts()).length, counts.workouts);
+  ok("un export se restaure à l'identique : exercices, programmes, étapes, séances et réglages");
+
+  // Fichier ancien, sans les colonnes ajoutées depuis : valeurs par défaut.
+  delete backup.data.programs[0].rounds;
+  delete backup.data.program_steps[0].kind;
+  const old = parseBackup(JSON.stringify(backup));
+  assert.ok("backup" in old);
+  await importData(old.backup);
+  assert.ok((await listPrograms()).every((p) => p.rounds >= 1));
+  assert.ok("error" in parseBackup("{}"));
+  assert.ok("error" in parseBackup("pas du json"));
+  assert.ok("error" in parseBackup(JSON.stringify({ ...backup, version: 99 })));
+  ok("un export plus ancien se restaure avec les valeurs par défaut ; un fichier étranger est refusé");
 }
 
 function pureLogic() {

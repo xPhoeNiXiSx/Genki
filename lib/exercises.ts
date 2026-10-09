@@ -44,6 +44,15 @@ function blankToNull(value: FormDataEntryValue | null): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+/**
+ * L'image d'un exercice est réduite dans le navigateur puis stockée telle
+ * quelle en base, en data URL : pas de stockage de fichiers à brancher, et
+ * elle reste disponible hors ligne avec le reste de la fiche.
+ */
+const IMAGE_DATA = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+/** Environ 500 Ko d'image : largement assez pour 900 px en JPEG. */
+export const MAX_IMAGE_CHARS = 700_000;
+
 /** Lit le formulaire d'un exercice. Renvoie l'erreur à afficher, le cas échéant. */
 export function parseExerciseForm(
   form: FormData,
@@ -55,8 +64,11 @@ export function parseExerciseForm(
   if (!category) return { error: "Choisis une catégorie." };
 
   const imageUrl = blankToNull(form.get("imageUrl"));
-  if (imageUrl && !/^https:\/\//.test(imageUrl)) {
-    return { error: "L'adresse de l'image doit commencer par https://." };
+  if (imageUrl && !/^https:\/\//.test(imageUrl) && !IMAGE_DATA.test(imageUrl)) {
+    return { error: "Cette image n'est pas lisible. Choisis une photo JPEG, PNG ou WebP." };
+  }
+  if (imageUrl && imageUrl.length > MAX_IMAGE_CHARS) {
+    return { error: "L'image est trop lourde, même réduite." };
   }
 
   const muscles = form
@@ -69,7 +81,8 @@ export function parseExerciseForm(
       category,
       imageUrl,
       description: blankToNull(form.get("description")),
-      equipment: blankToNull(form.get("equipment")),
+      // « Autre matériel », saisi en clair, l'emporte sur les pastilles.
+      equipment: blankToNull(form.get("equipmentOther")) ?? blankToNull(form.get("equipment")),
       muscles: normalizeMuscles(muscles),
     },
   };

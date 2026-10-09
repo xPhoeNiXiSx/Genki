@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { dayAndDate, parisToday } from "@/lib/dates";
 import { formatLength } from "@/lib/duration";
 import { dailyTotals, listWorkouts, weeklyTotals } from "@/lib/workouts";
@@ -72,7 +74,7 @@ export default async function TrackingPage() {
         {history.map((w) => {
           const [day, date] = dayAndDate(w.startedAt);
           return (
-            <article key={w.id} style={{ display: "grid", gridTemplateColumns: "66px 1fr auto", alignItems: "center", gap: 14, background: "var(--white)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", paddingRight: 14 }}>
+            <Link key={w.id} href={`/suivi/${w.id}`} style={{ display: "grid", gridTemplateColumns: "66px 1fr auto", alignItems: "center", gap: 14, background: "var(--white)", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", paddingRight: 14 }}>
               <div style={{ background: w.completed ? "var(--ink)" : "var(--soft)", color: w.completed ? "var(--white)" : "var(--ink)", alignSelf: "stretch", display: "grid", placeContent: "center", textAlign: "center", padding: "12px 0" }}>
                 <span className="mono" style={{ fontSize: 11, color: w.completed ? "var(--volt)" : undefined }}>{day}</span>
                 <span className="mono" style={{ fontSize: 14 }}>{date}</span>
@@ -84,7 +86,7 @@ export default async function TrackingPage() {
               <span className="chip" style={{ height: 26, fontSize: 11, background: w.completed ? "var(--volt)" : "transparent", borderColor: w.completed ? "var(--ink)" : undefined }}>
                 {w.completed ? "Terminée" : "Interrompue"}
               </span>
-            </article>
+            </Link>
           );
         })}
         {history.length === 0 ? (

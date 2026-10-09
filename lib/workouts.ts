@@ -14,15 +14,54 @@ export type Workout = {
   startedAt: Date;
   durationSeconds: number;
   completed: boolean;
+  /** Ressenti de 1 (très dur) à 5 (facile). */
+  feeling: number | null;
+  /** Note libre, pour le kiné. */
+  note: string | null;
+  stepsDone: number | null;
+  stepsTotal: number | null;
 };
 
-export type WorkoutInput = Omit<Workout, "id">;
+export type WorkoutInput = Omit<Workout, "id" | "feeling" | "note" | "stepsDone" | "stepsTotal"> &
+  Partial<Pick<Workout, "feeling" | "note" | "stepsDone" | "stepsTotal">>;
+
+type WorkoutRow = {
+  id: string;
+  program_id: string | null;
+  program_name: string;
+  started_at: string | Date;
+  duration_seconds: number;
+  completed: boolean;
+  feeling: number | null;
+  note: string | null;
+  steps_done: number | null;
+  steps_total: number | null;
+};
+
+const WORKOUT_COLUMNS = `id, program_id, program_name, started_at, duration_seconds, completed,
+                         feeling, note, steps_done, steps_total`;
+
+function fromRow(row: WorkoutRow): Workout {
+  return {
+    id: row.id,
+    programId: row.program_id,
+    programName: row.program_name,
+    startedAt: new Date(row.started_at),
+    durationSeconds: row.duration_seconds,
+    completed: row.completed,
+    feeling: row.feeling,
+    note: row.note,
+    stepsDone: row.steps_done,
+    stepsTotal: row.steps_total,
+  };
+}
 
 export async function recordWorkout(input: WorkoutInput): Promise<string> {
   const rows = await query<{ id: string }>(
     `insert into workout_sessions
-       (program_id, program_name, started_at, duration_seconds, completed)
-     values ($1, $2, $3, $4, $5)
+       (program_id, program_name, started_at, duration_seconds, completed,
+        feeling, note, steps_done, steps_total)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      returning id`,
     [
       input.programId,
@@ -30,35 +69,59 @@ export async function recordWorkout(input: WorkoutInput): Promise<string> {
       input.startedAt.toISOString(),
       Math.max(0, Math.round(input.durationSeconds)),
       input.completed,
+      input.feeling ?? null,
+      input.note ?? null,
+      input.stepsDone ?? null,
+      input.stepsTotal ?? null,
     ],
   );
   return rows[0].id;
 }
 
 export async function listWorkouts(limit = 50): Promise<Workout[]> {
-  const rows = await query<{
-    id: string;
-    program_id: string | null;
-    program_name: string;
-    started_at: string | Date;
-    duration_seconds: number;
-    completed: boolean;
-  }>(
-    `select id, program_id, program_name, started_at, duration_seconds, completed
-       from workout_sessions
-      order by started_at desc
-      limit $1`,
+  const rows = await query<WorkoutRow>(
+    `select ${WORKOUT_COLUMNS} from workout_sessions order by started_at desc limit $1`,
     [limit],
   );
+  return rows.map(fromRow);
+}
 
-  return rows.map((row) => ({
-    id: row.id,
-    programId: row.program_id,
-    programName: row.program_name,
-    startedAt: new Date(row.started_at),
-    durationSeconds: row.duration_seconds,
-    completed: row.completed,
-  }));
+export async function getWorkout(id: string): Promise<Workout | null> {
+  const rows = await query<WorkoutRow>(`select ${WORKOUT_COLUMNS} from workout_sessions where id = $1`, [id]);
+  return rows[0] ? fromRow(rows[0]) : null;
+}
+
+/**
+ * Série en cours : jours consécutifs avec au moins une séance, en remontant
+ * depuis aujourd'hui (ou depuis hier, si rien n'est encore fait aujourd'hui).
+ */
+export async function currentStreak(now = new Date()): Promise<number> {
+  const rows = await query<{ day: string }>(
+    `select distinct to_char((started_at at time zone '${TIME_ZONE}')::date, 'YYYY-MM-DD') as day
+       from workout_sessions
+      where started_at > $1::timestamptz - interval '400 days'
+      order by day desc`,
+    [now.toISOString()],
+  );
+  const days = new Set(rows.map((r) => r.day));
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE });
+  const day = (offset: number) => fmt.format(new Date(now.getTime() - offset * 86_400_000));
+  let offset = days.has(day(0)) ? 0 : 1;
+  let streak = 0;
+  while (days.has(day(offset))) {
+    streak += 1;
+    offset += 1;
+  }
+  return streak;
+}
+
+/** Ajoute le bilan d'une séance déjà enregistrée : ressenti et note. */
+export async function reviewWorkout(id: string, feeling: number | null, note: string | null): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `update workout_sessions set feeling = $2, note = $3 where id = $1 returning id`,
+    [id, feeling, note],
+  );
+  return rows.length > 0;
 }
 
 export async function deleteWorkout(id: string): Promise<void> {

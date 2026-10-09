@@ -1,7 +1,10 @@
+import Link from "next/link";
+
 import { sinceLabel } from "@/lib/dates";
 import { getProgram, listPrograms, type Program } from "@/lib/programs";
 
 import { databaseBlocker } from "../db-screens";
+import { Icon } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
 import { ProgramBib } from "../ui/program-bib";
 import { TabBar } from "../ui/tab-bar";
@@ -16,6 +19,9 @@ export default async function ProgramsPage() {
   return (
     <main className="screen">
       <Lanes />
+      <Link href="/programmes/nouveau" className="round volt" aria-label="Créer un programme" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24 }}>
+        <Icon name="plus" size={20} />
+      </Link>
       <h1 className="display title">Programmes</h1>
       <p className="subtitle">
         プログラム · {programs.length} programme{programs.length > 1 ? "s" : ""}
@@ -31,11 +37,9 @@ export default async function ProgramsPage() {
             hero={i === 0}
           />
         ))}
-        {programs.length === 0 ? (
-          <div className="galet" style={{ borderStyle: "dashed", textAlign: "center" }}>
-            Aucun programme pour l&apos;instant.
-          </div>
-        ) : null}
+        <Link href="/programmes/nouveau" className="galet" style={{ border: "1.5px dashed rgba(26,26,29,.45)", background: "transparent", borderRadius: 24, display: "flex", justifyContent: "center", alignItems: "center", gap: 10, minHeight: 64, fontWeight: 900 }}>
+          <Icon name="plus" size={20} /> Créer un programme
+        </Link>
       </div>
 
       <TabBar />

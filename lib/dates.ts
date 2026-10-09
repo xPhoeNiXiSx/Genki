@@ -27,3 +27,11 @@ export function sinceLabel(date: Date | null, now = new Date()): string {
   if (days === 1) return "HIER";
   return `IL Y A ${days} J`;
 }
+
+/** « MARDI 06/10 · 18:42 », en tête de la fiche d'une séance. */
+export function longDate(date: Date): string {
+  const day = new Intl.DateTimeFormat("fr-FR", { timeZone: TIME_ZONE, weekday: "long" }).format(date);
+  const dm = new Intl.DateTimeFormat("fr-FR", { timeZone: TIME_ZONE, day: "2-digit", month: "2-digit" }).format(date);
+  const hm = new Intl.DateTimeFormat("fr-FR", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" }).format(date);
+  return `${day.toUpperCase()} ${dm} · ${hm}`;
+}

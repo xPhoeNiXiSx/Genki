@@ -48,6 +48,22 @@ export const SCHEMA_STATEMENTS: string[] = [
   `create index if not exists program_steps_program
      on program_steps (program_id, position)`,
 
+  // Options d'un programme, ajoutées avec l'éditeur.
+  `alter table programs add column if not exists category text`,
+  `alter table programs add column if not exists rounds integer not null default 1`,
+  `alter table programs add column if not exists prep_seconds integer not null default 10`,
+  `alter table programs add column if not exists sound text not null default 'gong'`,
+
+  // Type d'étape : exercice de la bibliothèque, repos ou échauffement.
+  `alter table program_steps add column if not exists kind text not null default 'exercise'`,
+  // Étapes antérieures au type : « Repos » et « Échauffement » étaient de
+  // simples libellés. Un exercice supprimé de la bibliothèque garde, lui,
+  // son nom en libellé et reste un exercice. Rejouable sans effet.
+  `update program_steps
+      set kind = case when lower(label) like '%chauff%' then 'warmup' else 'rest' end
+    where kind = 'exercise' and exercise_id is null
+      and (lower(label) like 'repos%' or lower(label) like '%chauff%')`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (
@@ -60,6 +76,20 @@ export const SCHEMA_STATEMENTS: string[] = [
    )`,
   `create index if not exists workout_sessions_started
      on workout_sessions (started_at desc)`,
+
+  // Bilan de fin de séance : ressenti de 1 à 5, note libre pour le kiné,
+  // étapes réalisées sur le total.
+  `alter table workout_sessions add column if not exists feeling smallint check (feeling between 1 and 5)`,
+  `alter table workout_sessions add column if not exists note text`,
+  `alter table workout_sessions add column if not exists steps_done integer`,
+  `alter table workout_sessions add column if not exists steps_total integer`,
+
+  // Réglages de l'appli : une ligne par réglage, valeur en JSON.
+  `create table if not exists settings (
+     key         text primary key,
+     value       jsonb not null,
+     updated_at  timestamptz not null default now()
+   )`,
 
   // Échecs de connexion, pour freiner qui devine le mot de passe.
   `create table if not exists login_failures (

@@ -33,6 +33,9 @@ export default async function ExercisesPage({ searchParams }: { searchParams: Pr
   return (
     <main className="screen">
       <Lanes />
+      <Link href="/exercices/nouveau" className="round volt" aria-label="Créer un exercice" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24 }}>
+        <Icon name="plus" size={20} />
+      </Link>
       <h1 className="display title">Exercices</h1>
       <p className="subtitle">
         エクササイズ · {all.length} exercice{all.length > 1 ? "s" : ""}

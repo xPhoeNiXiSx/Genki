@@ -1,5 +1,5 @@
 /** Couloirs de piste d'athlétisme, en filigrane derrière le contenu. */
-export function Lanes({ centered = false }: { centered?: boolean }) {
+export function Lanes({ centered = false, dark = false }: { centered?: boolean; dark?: boolean }) {
   return (
     <svg className={centered ? "lanes centered" : "lanes"} viewBox="0 0 480 520" aria-hidden="true">
       {[0, 1, 2, 3, 4].map((k) => {
@@ -13,8 +13,8 @@ export function Lanes({ centered = false }: { centered?: boolean }) {
             height={520 - inset * 2}
             rx={240 - inset}
             fill="none"
-            stroke="#1a1a1d"
-            strokeOpacity="0.08"
+            stroke={dark ? "#d7ff3e" : "#1a1a1d"}
+            strokeOpacity={dark ? 0.12 : 0.08}
             strokeWidth="2"
           />
         );

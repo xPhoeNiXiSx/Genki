@@ -344,6 +344,7 @@ textarea {
   border-radius: 50%;
   background: var(--white);
   border: 1px solid rgba(26, 26, 29, 0.2);
+  color: var(--ink);
   cursor: pointer;
   padding: 0;
 }
@@ -530,4 +531,213 @@ textarea {
   .splash img {
     animation: none;
   }
+}
+
+/* --- Formulaires de création ------------------------------------------- */
+
+.field-label {
+  display: block;
+  margin: 22px 0 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  background: var(--white);
+  /* 16px minimum : en dessous, iOS zoome sur le champ au toucher. */
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+}
+
+.input {
+  height: 52px;
+  padding: 0 22px;
+  border-radius: 26px;
+}
+
+.textarea {
+  min-height: 96px;
+  padding: 16px 22px;
+  border-radius: 28px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus {
+  border: 2px solid var(--ink);
+}
+
+/* Pastille de choix : un bouton radio ou une case masqués, la pastille
+   passe en encre quand elle est cochée. */
+.choice {
+  position: relative;
+  display: inline-flex;
+}
+
+.choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice input:checked + .chip {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--volt);
+}
+
+.choice input:focus-visible + .chip {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip.dashed {
+  border-style: dashed;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chip.accent {
+  background: var(--volt);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.body-map-touch path {
+  cursor: pointer;
+}
+
+/* --- Lignes d'étape ------------------------------------------------------ */
+
+.step-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: var(--white);
+  border: 1px solid var(--line);
+}
+
+.step-row[data-kind="rest"] {
+  background: var(--stone);
+  border-color: var(--stone);
+}
+
+.handle {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 36px;
+  margin-left: -6px;
+  color: var(--grey);
+  touch-action: none;
+  cursor: grab;
+}
+
+.stat {
+  display: grid;
+  align-content: space-between;
+  min-height: 92px;
+  padding: 14px 16px;
+  border-radius: 28px 14px 28px 14px;
+  background: var(--white);
+  border: 1px solid var(--line);
+}
+
+.stat.volt {
+  background: var(--volt);
+  border: 1.5px solid var(--ink);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 20px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.settings > * + * {
+  border-top: 1px solid var(--line);
+}
+
+/* Panneau qui monte depuis le bas, sur l'écran voilé. */
+.sheet-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(26, 26, 29, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 440px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  padding: 10px 24px calc(env(safe-area-inset-bottom) + 24px);
+  border-radius: 32px 32px 0 0;
+  background: var(--white);
+  animation: sheet-up 0.22s ease-out;
+}
+
+.sheet::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 18px;
+  border-radius: 2px;
+  background: var(--soft);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+}
+
+summary::-webkit-details-marker {
+  display: none;
 }

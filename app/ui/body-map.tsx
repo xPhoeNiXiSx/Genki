@@ -19,12 +19,15 @@ export function BodyMap({
   tone = "light",
   height,
   label,
+  onToggle,
 }: {
   view: View;
   highlight: MuscleKey[];
   tone?: keyof typeof TONES;
   height: number;
   label?: string;
+  /** Rend chaque muscle touchable (formulaire d'exercice). */
+  onToggle?: (key: MuscleKey) => void;
 }) {
   const c = TONES[tone];
   const muscles = Object.entries(musclesOf(view)) as [MuscleKey, string[]][];
@@ -38,7 +41,10 @@ export function BodyMap({
       <g transform={`translate(${VIEWBOX.width} 0) scale(-1 1)`}>{content}</g>
     </>
   );
-  const paths = (list: string[]) => list.map((d) => <path key={d} d={d} vectorEffect="non-scaling-stroke" />);
+  const paths = (list: string[], key?: MuscleKey) =>
+    list.map((d) => (
+      <path key={d} d={d} vectorEffect="non-scaling-stroke" onClick={key && onToggle ? () => onToggle(key) : undefined} />
+    ));
 
   return (
     <svg
@@ -48,15 +54,16 @@ export function BodyMap({
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
+      className={onToggle ? "body-map-touch" : undefined}
     >
       <g fill={c.base}>{both(paths(UNDERLAY))}</g>
       <g fill={c.base} stroke={c.sep} strokeWidth="1" strokeLinejoin="round">
-        {both(muscles.filter(([key]) => !on.has(key)).map(([key, list]) => <g key={key}>{paths(list)}</g>))}
+        {both(muscles.filter(([key]) => !on.has(key)).map(([key, list]) => <g key={key}>{paths(list, key)}</g>))}
       </g>
       <g fill={c.on} stroke={c.onLine} strokeWidth="1.1" strokeLinejoin="round">
-        {both(muscles.filter(([key]) => on.has(key)).map(([key, list]) => <g key={key}>{paths(list)}</g>))}
+        {both(muscles.filter(([key]) => on.has(key)).map(([key, list]) => <g key={key}>{paths(list, key)}</g>))}
       </g>
-      <g fill={c.skin} stroke={c.skinLine} strokeWidth="1" strokeLinejoin="round">
+      <g fill={c.skin} stroke={c.skinLine} strokeWidth="1" strokeLinejoin="round" pointerEvents="none">
         <ellipse cx={HEAD.cx} cy={HEAD.cy} rx={HEAD.rx} ry={HEAD.ry} vectorEffect="non-scaling-stroke" />
         {both(paths(OUTLINE[view]))}
       </g>

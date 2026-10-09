@@ -34,12 +34,13 @@ export default async function HomePage() {
   return (
     <main className="screen">
       <Lanes />
-      <p className="katakana" aria-hidden="true">ゲンキ</p>
+      <Link href="/compte" className="round" aria-label="Réglages" style={{ position: "absolute", top: "calc(env(safe-area-inset-top) + 20px)", right: 24 }}>
+        <Icon name="settings" size={20} />
+      </Link>
+      <p className="katakana" aria-hidden="true" style={{ right: 78, fontSize: 44 }}>ゲンキ</p>
 
       <header>
-        <Link href="/compte" aria-label="Genki — mon compte">
-          <Logo />
-        </Link>
+        <Logo />
       </header>
 
       <h1 className="display" style={{ fontSize: 38, marginTop: 22 }}>Bonjour</h1>

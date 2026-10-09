@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { formatLength } from "@/lib/duration";
-import type { Program } from "@/lib/programs";
+import { roundSeconds, type Program } from "@/lib/programs";
 
 import { Icon } from "./icons";
 
@@ -20,7 +20,7 @@ export function ProgramBib({
   band: string;
   hero?: boolean;
 }) {
-  const total = program.steps.reduce((sum, step) => sum + step.durationSeconds, 0);
+  const total = roundSeconds(program.steps) * program.rounds;
   return (
     <article className={hero ? "bib tilted" : "bib"}>
       <div className={hero ? "bib-band" : "bib-band ink"}>
@@ -31,9 +31,12 @@ export function ProgramBib({
       </div>
       <div className="bib-body" style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center" }}>
         <div style={{ minWidth: 0 }}>
-          <h3 className="display" style={{ fontSize: 19, lineHeight: 1.15 }}>{program.name}</h3>
+          <h3 className="display" style={{ fontSize: 19, lineHeight: 1.15 }}>
+            <Link href={`/programmes/${program.id}`} style={{ display: "block" }}>{program.name}</Link>
+          </h3>
           <p className="mono muted" style={{ margin: "6px 0 12px", fontSize: 12 }}>
-            {program.steps.length} étape{program.steps.length > 1 ? "s" : ""} · {formatLength(total)}
+            {program.steps.length} étape{program.steps.length > 1 ? "s" : ""}
+            {program.rounds > 1 ? ` × ${program.rounds} tours` : ""} · {formatLength(total)}
           </p>
           <div style={{ display: "flex", gap: 3 }} aria-hidden="true">
             {program.steps.map((step, i) => (
@@ -43,8 +46,8 @@ export function ProgramBib({
                   flex: step.durationSeconds,
                   height: 8,
                   borderRadius: 4,
-                  background: step.exerciseId ? (hero ? "var(--ink)" : "var(--volt)") : "var(--soft)",
-                  border: step.exerciseId && !hero ? "1px solid var(--ink)" : undefined,
+                  background: step.kind !== "rest" ? (hero ? "var(--ink)" : "var(--volt)") : "var(--soft)",
+                  border: step.kind !== "rest" && !hero ? "1px solid var(--ink)" : undefined,
                 }}
               />
             ))}
