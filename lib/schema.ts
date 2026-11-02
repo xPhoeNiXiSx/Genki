@@ -110,6 +110,31 @@ export const SCHEMA_STATEMENTS: string[] = [
    union select 'program_category', category from programs where category is not null
    on conflict do nothing`,
 
+  // Plan de course (EcoTrail) : une ligne par séance prévue, remplie depuis
+  // `lib/plan-data.ts` à la première visite. Le réalisé s'écrit à côté du
+  // prévu ; durées en secondes, distances et dénivelé en mètres.
+  `create table if not exists plan_sessions (
+     id              uuid primary key default gen_random_uuid(),
+     week            smallint not null,
+     position        smallint not null,
+     kind            text not null,
+     title           text not null,
+     summary         text not null,
+     why             text not null,
+     blocks          jsonb not null default '[]',
+     target_seconds  integer not null,
+     target_meters   integer,
+     target_climb    integer,
+     status          text not null default 'todo' check (status in ('todo', 'done', 'skipped')),
+     done_at         timestamptz,
+     actual_seconds  integer check (actual_seconds >= 0),
+     actual_meters   integer check (actual_meters >= 0),
+     actual_climb    integer check (actual_climb >= 0),
+     feeling         smallint check (feeling between 1 and 5),
+     note            text,
+     unique (week, position)
+   )`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (

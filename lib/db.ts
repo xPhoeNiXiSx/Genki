@@ -64,7 +64,7 @@ export async function runMigrations(): Promise<void> {
  */
 export async function isSchemaReady(): Promise<boolean> {
   const rows = await query<{ present: boolean }>(
-    `select to_regclass('public.catalog') is not null
+    `select to_regclass('public.plan_sessions') is not null
             and exists (select 1 from information_schema.columns
                          where table_schema = 'public'
                            and table_name = 'exercises'

@@ -11,6 +11,8 @@ import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 
 import { addCatalog, deleteCatalog, listCatalog, renameCatalog } from "../lib/catalog";
+import { completePlanSession, currentWeek, daysToRace, ensurePlan, getPlanSession, listPlanSessions, parsePlanReport, setPlanStatus, weekProgress } from "../lib/plan";
+import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
   MAX_FAILURES,
@@ -95,6 +97,7 @@ async function main() {
 
   await exercisesAndPrograms();
   await workouts();
+  await trainingPlan();
   await settingsAndBackup();
   pureLogic();
 
@@ -409,6 +412,55 @@ async function settingsAndBackup() {
   assert.ok("error" in parseBackup("pas du json"));
   assert.ok("error" in parseBackup(JSON.stringify({ ...backup, version: 99 })));
   ok("un export plus ancien se restaure avec les valeurs par défaut ; un fichier étranger est refusé");
+}
+
+async function trainingPlan() {
+  const planned = plannedSessions();
+  assert.equal(PLAN_WEEKS.length, 16);
+  assert.equal(PLAN_WEEKS[0].monday, "2026-11-30");
+  assert.equal(PLAN_WEEKS[15].monday, "2027-03-15");
+  assert.equal(planned.length, 15 * 5 + 4);
+  assert.ok(planned.some((s) => s.week === 15 && s.title === "Semi d'Orvault"));
+  assert.ok(planned.some((s) => s.week === 16 && s.targetMeters === 45000));
+  ok("le plan compte 16 semaines, du 30 novembre à la course, semi d'Orvault compris");
+
+  const sessions = await listPlanSessions();
+  assert.equal(sessions.length, planned.length);
+  await ensurePlan();
+  assert.equal((await listPlanSessions()).length, planned.length);
+  ok("le plan s'enregistre à la première visite, une seule fois");
+
+  const first = sessions[0];
+  const parsed = parsePlanReport(form([["duration", "1:24"], ["km", "11,8"], ["climb", "110"], ["feeling", "4"], ["note", " Mollet dur "]]));
+  assert.ok("report" in parsed);
+  assert.deepEqual(parsed.report, { actualSeconds: 5040, actualMeters: 11800, actualClimb: 110, feeling: 4, note: "Mollet dur" });
+  const short = parsePlanReport(form([["duration", "45"]]));
+  assert.ok("report" in short && short.report.actualSeconds === 2700);
+  assert.ok("error" in parsePlanReport(form([["duration", "une heure"]])));
+  assert.ok("error" in parsePlanReport(form([["feeling", "9"]])));
+  ok("la saisie d'une séance lit 1:24, 45 min, 11,8 km et refuse l'illisible");
+
+  await completePlanSession(first.id, parsed.report);
+  let again = await getPlanSession(first.id);
+  assert.equal(again?.status, "done");
+  assert.equal(again?.actualMeters, 11800);
+  const progress = weekProgress(await listPlanSessions());
+  assert.equal(progress[0].done, 1);
+  assert.equal(progress[0].metersDone, 11800);
+  await setPlanStatus(first.id, "skipped");
+  again = await getPlanSession(first.id);
+  assert.equal(again?.status, "skipped");
+  assert.equal(again?.actualMeters, null);
+  await setPlanStatus(first.id, "todo");
+  ok("une séance se coche avec le réalisé, se marque non faite ou se remet à faire");
+
+  assert.equal(currentWeek("2026-11-02"), 1);
+  assert.equal(currentWeek("2026-12-06"), 1);
+  assert.equal(currentWeek("2026-12-07"), 2);
+  assert.equal(currentWeek("2027-03-20"), 16);
+  assert.equal(currentWeek("2027-05-01"), 16);
+  assert.equal(daysToRace("2026-11-30", "2027-03-20"), 110);
+  ok("la semaine en cours et le compte à rebours suivent le calendrier");
 }
 
 function pureLogic() {

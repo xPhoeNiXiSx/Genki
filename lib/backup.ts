@@ -56,6 +56,16 @@ const TABLES: { table: string; columns: Column[] }[] = [
     table: "catalog",
     columns: [{ name: "kind" }, { name: "name" }],
   },
+  {
+    table: "plan_sessions",
+    columns: [
+      { name: "id" }, { name: "week" }, { name: "position" }, { name: "kind" }, { name: "title" }, { name: "summary" },
+      { name: "why" }, { name: "blocks", fallback: [] }, { name: "target_seconds" }, { name: "target_meters", fallback: null },
+      { name: "target_climb", fallback: null }, { name: "status", fallback: "todo" }, { name: "done_at", fallback: null },
+      { name: "actual_seconds", fallback: null }, { name: "actual_meters", fallback: null }, { name: "actual_climb", fallback: null },
+      { name: "feeling", fallback: null }, { name: "note", fallback: null },
+    ],
+  },
 ];
 
 export type Backup = {

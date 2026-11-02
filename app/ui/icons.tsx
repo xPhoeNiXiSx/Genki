@@ -9,6 +9,12 @@ const PATHS = {
   dumbbell: <path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />,
   list: <path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01" />,
   chart: <path d="M5 20v-8M12 20V5M19 20v-5" />,
+  calendar: (
+    <>
+      <rect x="4" y="5" width="16" height="15" rx="3" />
+      <path d="M8 3v4M16 3v4M4 10h16" />
+    </>
+  ),
   metronome: (
     <>
       <path d="M9 3h6l4 18H5z" />
