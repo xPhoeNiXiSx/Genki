@@ -75,3 +75,33 @@ export function ConfirmDelete({
     </>
   );
 }
+
+/** Même panneau, pour une action locale (retirer une étape, défaire une boucle). */
+export function ConfirmSheet({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="sheet-veil" onClick={onCancel}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label={title}>
+        <h2 className="display" style={{ fontSize: 22 }}>{title}</h2>
+        <p className="muted" style={{ margin: "8px 0 0" }}>{message}</p>
+        <button type="button" className="btn wide" style={{ marginTop: 20, background: "var(--danger)", borderColor: "var(--danger)", color: "var(--white)" }} onClick={onConfirm}>
+          <Icon name="trash" size={18} /> {confirmLabel}
+        </button>
+        <button type="button" className="btn" style={{ background: "transparent", color: "var(--ink)", width: "100%", marginTop: 6 }} onClick={onCancel}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}

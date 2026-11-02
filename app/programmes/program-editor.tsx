@@ -24,7 +24,7 @@ import {
 
 import { BodyMap } from "../ui/body-map";
 import { CatalogPicker } from "../ui/catalog-picker";
-import { ConfirmDelete } from "../ui/confirm-delete";
+import { ConfirmDelete, ConfirmSheet } from "../ui/confirm-delete";
 import { Icon } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
 import { StepRow } from "../ui/step-row";
@@ -112,6 +112,8 @@ export function ProgramEditor({
   const [sheet, setSheet] = useState<{ uid: number | null; loopGroup: number | null; draft: Draft } | null>(null);
   const [loopSheet, setLoopSheet] = useState<LoopSheet | null>(null);
   const [option, setOption] = useState<"prep" | "sound" | null>(null);
+  // Retrait d'étape ou de boucle en attente de confirmation.
+  const [confirming, setConfirming] = useState<"step" | "loop" | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
 
@@ -370,7 +372,7 @@ export function ProgramEditor({
           exercises={offered}
           onChange={(draft) => setSheet({ ...sheet, draft })}
           onApply={applySheet}
-          onRemove={removeStep}
+          onRemove={() => setConfirming("step")}
           onClose={() => setSheet(null)}
         />
       ) : null}
@@ -411,12 +413,31 @@ export function ProgramEditor({
               <Icon name="check" size={20} /> {loopSheet.group === null ? "Créer la boucle" : "Mettre à jour la boucle"}
             </button>
             {loopSheet.group !== null ? (
-              <button type="button" className="btn" style={{ background: "transparent", color: "var(--danger)", width: "100%", marginTop: 6 }} onClick={removeLoop}>
+              <button type="button" className="btn" style={{ background: "transparent", color: "var(--danger)", width: "100%", marginTop: 6 }} onClick={() => setConfirming("loop")}>
                 <Icon name="close" size={18} /> Défaire la boucle
               </button>
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {confirming === "step" && sheet ? (
+        <ConfirmSheet
+          title="Retirer cette étape ?"
+          message="Elle disparaît de la séance une fois celle-ci enregistrée."
+          confirmLabel="Retirer l'étape"
+          onConfirm={() => { setConfirming(null); removeStep(); }}
+          onCancel={() => setConfirming(null)}
+        />
+      ) : null}
+      {confirming === "loop" && loopSheet ? (
+        <ConfirmSheet
+          title="Défaire la boucle ?"
+          message="Ses étapes restent dans la séance, mais ne seront plus répétées."
+          confirmLabel="Défaire la boucle"
+          onConfirm={() => { setConfirming(null); removeLoop(); }}
+          onCancel={() => setConfirming(null)}
+        />
       ) : null}
 
       {option ? (
