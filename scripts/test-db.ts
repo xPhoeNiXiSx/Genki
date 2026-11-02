@@ -11,7 +11,24 @@ import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 
 import { addCatalog, deleteCatalog, listCatalog, renameCatalog } from "../lib/catalog";
-import { completePlanSession, currentWeek, daysToRace, ensurePlan, getPlanSession, listPlanSessions, parsePlanReport, setPlanStatus, weekProgress } from "../lib/plan";
+import {
+  completePlanSession,
+  currentWeek,
+  daysToRace,
+  decideAdjustment,
+  ensureAdjustment,
+  ensurePlan,
+  getPlanSession,
+  listAdjustments,
+  listPlanSessions,
+  matchActivities,
+  parsePlanReport,
+  planWeekOf,
+  setPlanStatus,
+  weekProgress,
+  withAdjustment,
+} from "../lib/plan";
+import { fromStrava, newState, planKindOf, saveActivities, verifyState } from "../lib/strava";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
@@ -88,8 +105,8 @@ async function main() {
   ok("le schéma est idempotent");
 
   // Une base restée à une version antérieure : il lui manque les derniers ajouts.
-  await query(`drop table catalog`);
-  await query(`alter table exercises drop column active`);
+  await query(`drop table plan_adjustments`);
+  await query(`alter table plan_sessions drop column activity_id`);
   assert.equal(await isSchemaReady(), false);
   await ensureSchema();
   assert.equal(await isSchemaReady(), true);
@@ -461,6 +478,77 @@ async function trainingPlan() {
   assert.equal(currentWeek("2027-05-01"), 16);
   assert.equal(daysToRace("2026-11-30", "2027-03-20"), 110);
   ok("la semaine en cours et le compte à rebours suivent le calendrier");
+
+  // Strava : une activité se traduit, se range par type, ne s'importe qu'une fois.
+  const run = fromStrava({ id: 42, name: "Sortie du dimanche", sport_type: "TrailRun", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 });
+  assert.deepEqual([run.id, run.distanceMeters, run.climbMeters, run.movingSeconds], ["strava:42", 11235, 96, 4980]);
+  assert.equal(planKindOf("Run"), "course");
+  assert.equal(planKindOf("WeightTraining"), "renfo");
+  assert.equal(planKindOf("Ride"), null);
+  const strength = fromStrava({ id: 43, name: "Renfo", sport_type: "WeightTraining", start_date: "2026-12-02T18:00:00Z", moving_time: 1900 });
+  const ride = fromStrava({ id: 44, name: "Vélo", sport_type: "Ride", start_date: "2026-12-03T18:00:00Z", moving_time: 3600, distance: 30000 });
+  const outside = fromStrava({ id: 45, name: "Avant le plan", sport_type: "Run", start_date: "2026-11-20T08:00:00Z", moving_time: 2700, distance: 6500 });
+  const fresh = await saveActivities([run, strength, ride, outside]);
+  assert.equal(fresh.length, 4);
+  assert.equal((await saveActivities([run])).length, 0);
+  ok("une activité Strava se traduit, se range par type et ne s'importe qu'une fois");
+
+  assert.equal(planWeekOf("2026-11-29"), null);
+  assert.equal(planWeekOf("2026-12-06"), 1);
+  assert.equal(await matchActivities(fresh), 2);
+  const week1 = (await listPlanSessions()).filter((x) => x.week === 1);
+  const long = week1.find((x) => x.title === "Sortie longue")!;
+  assert.equal(long.status, "done");
+  assert.equal(long.actualMeters, 11235);
+  assert.equal(long.activityId, "strava:42");
+  assert.equal(week1.filter((x) => x.kind === "renfo" && x.status === "done").length, 1);
+  assert.equal(week1.find((x) => x.title === "Footing en endurance")!.status, "todo");
+  assert.equal(await matchActivities([run]), 0);
+  ok("une sortie importée coche, dans sa semaine, la séance du même type à la durée la plus proche");
+
+  process.env.AUTH_SECRET ??= "secret-de-test";
+  const state = await newState(1_000_000);
+  assert.ok(await verifyState(state, 1_000_000 + 60_000));
+  assert.ok(!(await verifyState(state, 1_000_000 + 11 * 60_000)));
+  assert.ok(!(await verifyState(state.replace(/.$/, (c) => (c === "a" ? "b" : "a")), 1_000_000)));
+  assert.ok(!(await verifyState(null)));
+  ok("le retour de Strava n'est accepté qu'avec un état signé de moins de dix minutes");
+
+  // Adaptation.
+  const mk = (kind: "course" | "renfo", status: "todo" | "done" | "skipped", feeling: number | null = null) =>
+    ({ ...week1[0], kind, status, feeling, actualMeters: null, targetMeters: null }) as typeof week1[0];
+  const full = [mk("course", "done", 5), mk("renfo", "done", 5), mk("course", "done", 5), mk("renfo", "todo"), mk("course", "done", 5)];
+  assert.equal(decideAdjustment(1, full).factor, 1);
+  assert.equal(decideAdjustment(3, full).factor, 1.05);
+  assert.equal(decideAdjustment(4, full).factor, 1);
+  assert.equal(decideAdjustment(3, [mk("course", "skipped"), mk("course", "todo"), mk("course", "done", 3), mk("renfo", "done")]).factor, 0.8);
+  assert.equal(decideAdjustment(3, [mk("course", "done", 2), mk("course", "done", 1), mk("course", "done", 3)]).factor, 0.85);
+  const oneMissed = decideAdjustment(3, [mk("course", "skipped"), mk("course", "done", 3), mk("course", "done", 3), mk("renfo", "todo"), mk("renfo", "todo")]);
+  assert.equal(oneMissed.factor, 1);
+  assert.match(oneMissed.reason, /ne la rattrape pas/);
+  assert.equal(decideAdjustment(15, [mk("course", "skipped"), mk("course", "skipped")]).factor, 1);
+  ok("le plan s'allège après des sorties manquées ou une semaine dure, s'allonge un peu si tout est facile, jamais avant la course");
+
+  const footing = week1.find((x) => x.title === "Footing en endurance")!;
+  const lighter = withAdjustment(footing, 0.8);
+  assert.equal(lighter.targetSeconds, 35 * 60);
+  assert.equal(lighter.summary, "35 min · 6:45–7:15 /km");
+  assert.equal(lighter.blocks[0].duration, "35′");
+  assert.equal(withAdjustment(week1.find((x) => x.position === 2)!, 0.8).adjusted, false);
+  const longer = withAdjustment({ ...long, status: "todo" }, 1.05);
+  assert.equal(longer.targetSeconds, 85 * 60);
+  assert.equal(longer.blocks[1].duration, "1 h 05");
+  ok("un ajustement raccourcit footing et sortie longue, pas les séances de qualité");
+
+  const sessionsNow = await listPlanSessions();
+  const adj = await ensureAdjustment(2, sessionsNow);
+  assert.equal((await listAdjustments()).get(2)?.factor, adj.factor);
+  const someWeek2 = sessionsNow.find((x) => x.week === 2)!;
+  await completePlanSession(someWeek2.id, { actualSeconds: 600, actualMeters: null, actualClimb: null, feeling: 3, note: null });
+  await query(`update plan_adjustments set factor = 0.9, reason = 'figé' where week = 2`);
+  assert.equal((await ensureAdjustment(2, await listPlanSessions())).reason, "figé");
+  await setPlanStatus(someWeek2.id, "todo");
+  ok("l'ajustement suit la semaine passée tant que la semaine n'a pas commencé, puis il est figé");
 }
 
 function pureLogic() {

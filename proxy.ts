@@ -5,9 +5,10 @@ import { SESSION_COOKIE, isAuthConfigured, verifyToken } from "@/lib/session";
 /**
  * L'application entière est privée. Fermer au niveau du proxy plutôt que page
  * par page évite qu'une route ajoutée plus tard soit publique par oubli — le
- * défaut devient « fermé ». Seule exception : la page de connexion.
+ * défaut devient « fermé ». Exceptions : la page de connexion, et le retour
+ * de Strava, protégé par son état signé.
  */
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/api/strava/callback"];
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

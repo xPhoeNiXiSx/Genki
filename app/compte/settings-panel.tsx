@@ -8,7 +8,7 @@ import type { SettingKey, Settings } from "@/lib/settings";
 import { logoutAction } from "../login/actions";
 import { SubmitButton } from "../submit-button";
 import { Icon } from "../ui/icons";
-import { importAction, migrateAction, saveSettingAction, type ImportState } from "./actions";
+import { disconnectStravaAction, importAction, migrateAction, saveSettingAction, syncStravaAction, type ImportState } from "./actions";
 
 const TOGGLES: { key: Exclude<SettingKey, "signalSound">; label: string; hint: string }[] = [
   { key: "signal", label: "Signal sonore", hint: "à chaque changement d'étape" },
@@ -33,7 +33,15 @@ function Switch({ on, label, onToggle }: { on: boolean; label: string; onToggle:
   );
 }
 
-export function SettingsPanel({ initial, migrated }: { initial: Settings; migrated: boolean }) {
+export type StravaState = {
+  configured: boolean;
+  athleteName: string | null;
+  connected: boolean;
+  lastSync: string | null;
+  notice: string | null;
+};
+
+export function SettingsPanel({ initial, migrated, strava }: { initial: Settings; migrated: boolean; strava: StravaState }) {
   const [settings, setSettings] = useState(initial);
   const [soundSheet, setSoundSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,19 +86,41 @@ export function SettingsPanel({ initial, migrated }: { initial: Settings; migrat
 
       <span className="field-label">Intégrations</span>
       <div className="settings">
-        {[
-          ["Strava", "import des sorties course"],
-          ["Garmin Connect", "via la montre synchronisée"],
-        ].map(([name, hint]) => (
-          <div key={name} className="setting-row" style={{ cursor: "default" }}>
-            <span>
-              <span style={{ display: "block", fontWeight: 900 }}>{name}</span>
-              <span className="muted" style={{ fontSize: 12 }}>{hint}</span>
+        <div className="setting-row" style={{ cursor: "default" }}>
+          <span>
+            <span style={{ display: "block", fontWeight: 900 }}>Strava</span>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {!strava.configured
+                ? "à activer côté Vercel (clés Strava)"
+                : strava.connected
+                  ? `${strava.athleteName ?? "compte relié"} · ${strava.lastSync ? `synchro ${strava.lastSync}` : "pas encore synchronisé"}`
+                  : "importe tes sorties et coche le plan"}
             </span>
-            <span className="chip" style={{ height: 26, fontSize: 11 }}>Bientôt</span>
-          </div>
-        ))}
+          </span>
+          {!strava.configured ? (
+            <span className="chip" style={{ height: 26, fontSize: 11 }}>À configurer</span>
+          ) : strava.connected ? (
+            <form action={syncStravaAction}>
+              <SubmitButton className="chip" style={{ height: 32, fontSize: 12 }} pendingLabel="Synchro…">Synchroniser</SubmitButton>
+            </form>
+          ) : (
+            <a href="/api/strava/connect" className="chip on" style={{ height: 32, fontSize: 12 }}>Connecter</a>
+          )}
+        </div>
+        <div className="setting-row" style={{ cursor: "default" }}>
+          <span>
+            <span style={{ display: "block", fontWeight: 900 }}>Garmin Connect</span>
+            <span className="muted" style={{ fontSize: 12 }}>relie ta montre à Strava dans l&apos;appli Garmin Connect : ses sorties arrivent ici par Strava</span>
+          </span>
+          <span className="chip" style={{ height: 26, fontSize: 11 }}>via Strava</span>
+        </div>
       </div>
+      {strava.notice ? <p className={strava.notice.startsWith("✓") ? "muted" : "error"} role="status" style={{ marginTop: 10 }}>{strava.notice}</p> : null}
+      {strava.connected ? (
+        <form action={disconnectStravaAction} style={{ marginTop: 6 }}>
+          <SubmitButton className="btn" style={{ background: "transparent", color: "var(--grey)", width: "100%", height: 44 }} pendingLabel="Déconnexion…">Déconnecter Strava</SubmitButton>
+        </form>
+      ) : null}
 
       <span className="field-label">Données</span>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

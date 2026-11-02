@@ -1,5 +1,8 @@
+import { parisToday } from "@/lib/dates";
 import { query } from "@/lib/db";
 import { PLAN_START, PLAN_WEEKS, plannedSessions, type PlanBlock, type PlanKind, type PlanWeek } from "@/lib/plan-data";
+import type { Activity } from "@/lib/strava";
+import { planKindOf } from "@/lib/strava";
 
 export type PlanStatus = "todo" | "done" | "skipped";
 
@@ -22,6 +25,8 @@ export type PlanSession = {
   actualClimb: number | null;
   feeling: number | null;
   note: string | null;
+  /** Activité importée (Strava) qui a coché la séance. */
+  activityId: string | null;
 };
 
 type Row = {
@@ -43,10 +48,11 @@ type Row = {
   actual_climb: number | null;
   feeling: number | null;
   note: string | null;
+  activity_id: string | null;
 };
 
 const COLUMNS = `id, week, position, kind, title, summary, why, blocks, target_seconds, target_meters,
-  target_climb, status, done_at, actual_seconds, actual_meters, actual_climb, feeling, note`;
+  target_climb, status, done_at, actual_seconds, actual_meters, actual_climb, feeling, note, activity_id`;
 
 function fromRow(row: Row): PlanSession {
   return {
@@ -68,6 +74,7 @@ function fromRow(row: Row): PlanSession {
     actualClimb: row.actual_climb,
     feeling: row.feeling,
     note: row.note,
+    activityId: row.activity_id,
   };
 }
 
@@ -138,7 +145,7 @@ export async function setPlanStatus(id: string, status: Exclude<PlanStatus, "don
   await query(
     `update plan_sessions
         set status = $2, done_at = null, actual_seconds = null, actual_meters = null,
-            actual_climb = null, feeling = null, note = null
+            actual_climb = null, feeling = null, note = null, activity_id = null
       where id = $1`,
     [id, status],
   );
@@ -210,4 +217,149 @@ export function weekProgress(sessions: PlanSession[]): WeekProgress[] {
       metersDone: list.reduce((sum, s) => sum + (s.status === "done" && s.kind === "course" ? (s.actualMeters ?? 0) : 0), 0),
     };
   });
+}
+
+// --- Activités importées -----------------------------------------------------
+
+/** Semaine du plan d'une date, ou `null` hors du plan. */
+export function planWeekOf(date: string): number | null {
+  const start = new Date(`${PLAN_START}T12:00:00Z`).getTime();
+  const at = new Date(`${date}T12:00:00Z`).getTime();
+  const week = Math.floor((at - start) / (7 * 86_400_000)) + 1;
+  return week >= 1 && week <= PLAN_WEEKS.length ? week : null;
+}
+
+/**
+ * Coche le plan avec des activités importées : chaque activité coche, dans
+ * sa semaine, la séance à faire du même type dont la durée prévue est la
+ * plus proche. Ressenti et note restent à saisir. Renvoie le nombre de
+ * séances cochées.
+ */
+export async function matchActivities(activities: Activity[]): Promise<number> {
+  if (activities.length === 0) return 0;
+  const sessions = await listPlanSessions();
+  let checked = 0;
+  for (const a of [...activities].sort((x, y) => x.startDate.getTime() - y.startDate.getTime())) {
+    const kind = planKindOf(a.sportType);
+    const week = planWeekOf(parisToday(a.startDate));
+    if (!kind || !week || sessions.some((s) => s.activityId === a.id)) continue;
+    const candidates = sessions.filter((s) => s.week === week && s.kind === kind && s.status === "todo");
+    if (candidates.length === 0) continue;
+    const seconds = a.movingSeconds || a.elapsedSeconds;
+    const best = candidates.reduce((x, y) => (Math.abs(y.targetSeconds - seconds) < Math.abs(x.targetSeconds - seconds) ? y : x));
+    const rows = await query<{ id: string }>(
+      `update plan_sessions
+          set status = 'done', done_at = $2, actual_seconds = $3, actual_meters = $4, actual_climb = $5, activity_id = $6
+        where id = $1 and status = 'todo' returning id`,
+      [best.id, a.startDate.toISOString(), seconds || null, kind === "course" ? a.distanceMeters || null : null, kind === "course" ? a.climbMeters : null, a.id],
+    );
+    if (rows.length > 0) {
+      best.status = "done";
+      best.activityId = a.id;
+      checked++;
+    }
+  }
+  return checked;
+}
+
+// --- Adaptation ----------------------------------------------------------------
+
+export type Adjustment = { week: number; factor: number; reason: string };
+
+/**
+ * Décide l'ajustement d'une semaine d'après la précédente : séances
+ * manquées, ressenti moyen, kilomètres réellement courus. Seuls le footing
+ * et la sortie longue changent de durée ; les séances de qualité, le semi et
+ * la course ne bougent pas.
+ */
+export function decideAdjustment(week: number, previous: PlanSession[]): Adjustment {
+  const info = PLAN_WEEKS[week - 1];
+  if (week === 1 || previous.length === 0) return { week, factor: 1, reason: "Première semaine : plan tel quel." };
+  if (week >= PLAN_WEEKS.length - 1) return { week, factor: 1, reason: "Dernières semaines : le plan ne bouge plus." };
+
+  const done = previous.filter((s) => s.status === "done");
+  // Seules les sorties comptent comme manquées : un renfo fait sans être
+  // noté ne doit pas alléger la semaine suivante.
+  const runs = previous.filter((s) => s.kind === "course");
+  const missed = runs.filter((s) => s.status !== "done").length;
+  const feelings = done.map((s) => s.feeling).filter((f): f is number => f !== null);
+  const feeling = feelings.length ? feelings.reduce((a, b) => a + b, 0) / feelings.length : null;
+  const measured = done.filter((s) => s.kind === "course" && s.targetMeters && s.actualMeters);
+  const ratio = measured.length ? measured.reduce((a, s) => a + (s.actualMeters ?? 0), 0) / measured.reduce((a, s) => a + (s.targetMeters ?? 0), 0) : null;
+
+  let factor = 1;
+  let reason = "Semaine conforme : plan inchangé.";
+  if (missed >= 2) {
+    factor = 0.8;
+    reason = `${missed} sorties manquées la semaine dernière : on reprend en douceur, sans rattraper.`;
+  } else if (feeling !== null && feeling <= 2 && feelings.length >= 2) {
+    factor = 0.85;
+    reason = "Semaine dernière ressentie comme dure : on allège footing et sortie longue.";
+  } else if (missed === 1) {
+    reason = "Une sortie manquée la semaine dernière : on ne la rattrape pas, on continue.";
+  } else if (missed === 0 && feeling !== null && feeling >= 4.5 && feelings.length >= 3 && (ratio === null || ratio >= 0.95)) {
+    factor = 1.05;
+    reason = "Tout est passé facilement : footing et sortie longue un peu allongés.";
+  }
+  // Une semaine allégée le reste : on ne l'alourdit jamais.
+  if (info.light && factor > 1) {
+    factor = 1;
+    reason = "Semaine allégée : elle le reste, même si tout va bien.";
+  }
+  return { week, factor, reason };
+}
+
+export async function listAdjustments(): Promise<Map<number, Adjustment>> {
+  const rows = await query<{ week: number; factor: string | number; reason: string }>(`select week, factor, reason from plan_adjustments`);
+  return new Map(rows.map((r) => [r.week, { week: r.week, factor: Number(r.factor), reason: r.reason }]));
+}
+
+/**
+ * Ajustement de la semaine en cours. Il suit la semaine précédente tant
+ * qu'aucune séance de la semaine n'est faite (le temps de noter les
+ * dernières séances), puis il est figé.
+ */
+export async function ensureAdjustment(week: number, sessions: PlanSession[]): Promise<Adjustment> {
+  const known = (await listAdjustments()).get(week);
+  const started = sessions.some((s) => s.week === week && s.status === "done");
+  if (known && started) return known;
+  const decided = decideAdjustment(week, sessions.filter((s) => s.week === week - 1));
+  if (known && known.factor === decided.factor && known.reason === decided.reason) return known;
+  await query(
+    `insert into plan_adjustments (week, factor, reason) values ($1, $2, $3)
+     on conflict (week) do update set factor = excluded.factor, reason = excluded.reason, decided_at = now()`,
+    [decided.week, decided.factor, decided.reason],
+  );
+  return decided;
+}
+
+const ADJUSTABLE = new Set(["Footing en endurance", "Sortie longue"]);
+
+function roundMinutes(seconds: number): number {
+  return Math.max(5, Math.round(seconds / 300) * 5);
+}
+
+function minutesLabel(total: number, unit = "′"): string {
+  if (total < 60) return `${total}${unit}`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+}
+
+/** La séance telle qu'à faire, ajustement compris. */
+export function withAdjustment(session: PlanSession, factor: number | undefined): PlanSession & { adjusted: boolean } {
+  if (!factor || factor === 1 || session.status !== "todo" || !ADJUSTABLE.has(session.title)) return { ...session, adjusted: false };
+  const total = roundMinutes(session.targetSeconds * factor);
+  const rest = session.summary.split(" · ").slice(1);
+  const long = session.title === "Sortie longue";
+  return {
+    ...session,
+    adjusted: true,
+    targetSeconds: total * 60,
+    targetMeters: session.targetMeters ? Math.round((session.targetMeters * factor) / 100) * 100 : null,
+    summary: [minutesLabel(total, " min"), ...rest].join(" · "),
+    blocks: long
+      ? session.blocks.map((b, i) => (i === 1 ? { ...b, duration: minutesLabel(total - 20) } : b))
+      : session.blocks.map((b) => ({ ...b, duration: minutesLabel(total) })),
+  };
 }

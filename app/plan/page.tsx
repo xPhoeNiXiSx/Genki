@@ -1,8 +1,9 @@
 import Link from "next/link";
 
 import { parisToday } from "@/lib/dates";
-import { currentWeek, daysToRace, listPlanSessions, weekProgress, type PlanSession } from "@/lib/plan";
-import { PHASES, PLAN_WEEKS, RACE } from "@/lib/plan-data";
+import { currentWeek, daysToRace, ensureAdjustment, listAdjustments, listPlanSessions, matchActivities, weekProgress, withAdjustment, type PlanSession } from "@/lib/plan";
+import { PHASES, PLAN_START, PLAN_WEEKS, RACE } from "@/lib/plan-data";
+import { getStravaConnection, syncStrava } from "@/lib/strava";
 
 import { databaseBlocker } from "../db-screens";
 import { Icon } from "../ui/icons";
@@ -20,10 +21,13 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const asked = Number(semaine);
   const week = Number.isInteger(asked) && asked >= 1 && asked <= PLAN_WEEKS.length ? asked : now;
 
+  await syncIfStale();
   const sessions = await listPlanSessions();
   const progress = weekProgress(sessions);
   const info = progress[week - 1];
-  const list = sessions.filter((s) => s.week === week);
+  // L'ajustement de la semaine en cours se décide à la première visite.
+  const adjustment = week === now ? await ensureAdjustment(now, sessions) : (await listAdjustments()).get(week);
+  const list = sessions.filter((s) => s.week === week).map((s) => withAdjustment(s, adjustment?.factor));
   const kmDone = Math.round(info.metersDone / 100) / 10;
   const days = daysToRace(today, RACE.date);
   const sunday = new Date(`${info.monday}T12:00:00Z`);
@@ -97,6 +101,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <span className="mono muted" style={{ fontSize: 11 }}>{String(kmDone).replace(".", ",")} / {info.km} km</span>
       </div>
 
+      {adjustment && adjustment.factor !== 1 ? (
+        <p className="galet" style={{ margin: "12px 0 0", borderRadius: 18, padding: "10px 14px", fontSize: 13, lineHeight: 1.4, display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span className="mono" style={{ flex: "none", fontWeight: 500, padding: "1px 8px", borderRadius: 8, background: adjustment.factor < 1 ? "var(--ink)" : "var(--volt)", color: adjustment.factor < 1 ? "var(--volt)" : "var(--ink)" }}>
+            {adjustment.factor < 1 ? "−" : "+"}{Math.round(Math.abs(1 - adjustment.factor) * 100)} %
+          </span>
+          <span>{adjustment.reason}</span>
+        </p>
+      ) : null}
+
       <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
         {list.map((s) => <SessionCard key={s.id} session={s} next={s.id === next?.id && week === now} />)}
       </div>
@@ -110,7 +123,19 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   );
 }
 
-function SessionCard({ session: s, next }: { session: PlanSession; next: boolean }) {
+/**
+ * Strava relié : les sorties récentes cochent le plan à l'ouverture, au plus
+ * toutes les 30 minutes, sans jamais bloquer la page plus de 6 secondes.
+ */
+async function syncIfStale(): Promise<void> {
+  const connection = await getStravaConnection().catch(() => null);
+  if (!connection) return;
+  if (connection.lastSyncAt && Date.now() - connection.lastSyncAt.getTime() < 30 * 60_000) return;
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 6000));
+  await Promise.race([syncStrava(new Date(`${PLAN_START}T00:00:00Z`), matchActivities).catch(() => undefined), timeout]);
+}
+
+function SessionCard({ session: s, next }: { session: PlanSession & { adjusted?: boolean }; next: boolean }) {
   const done = s.status === "done";
   const skipped = s.status === "skipped";
   const background = next ? "var(--white)" : done ? "var(--stone)" : skipped ? "transparent" : "var(--white)";
@@ -133,7 +158,7 @@ function SessionCard({ session: s, next }: { session: PlanSession; next: boolean
           {s.kind === "course" ? "Course" : "Renfo"}
         </span>
         <span style={{ fontWeight: 900, fontSize: 15, lineHeight: 1.2, textDecoration: skipped ? "line-through" : undefined }}>{s.title}</span>
-        <span className="mono" style={{ fontSize: 11, color: done ? "var(--ink)" : "var(--grey)" }}>{done ? planLine(s) : s.summary}</span>
+        <span className="mono" style={{ fontSize: 11, color: done ? "var(--ink)" : "var(--grey)" }}>{done ? planLine(s) : s.summary}{s.adjusted ? " · ajustée" : ""}</span>
         {done ? <span className="muted" style={{ fontSize: 11 }}>prévu : {s.summary}</span> : null}
       </span>
       <Icon name="chevron" size={18} />

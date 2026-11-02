@@ -6,7 +6,10 @@ import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 import { importData, parseBackup } from "@/lib/backup";
 import { runMigrations } from "@/lib/db";
+import { matchActivities } from "@/lib/plan";
+import { PLAN_START } from "@/lib/plan-data";
 import { saveSetting, validSetting, type SettingKey, type Settings } from "@/lib/settings";
+import { disconnectStrava, syncStrava } from "@/lib/strava";
 
 async function guard() {
   if (!(await isAuthenticated())) redirect("/login?next=/compte");
@@ -49,4 +52,22 @@ export async function importAction(_state: ImportState, form: FormData): Promise
     console.error("[import]", error);
     return { error: "La restauration a échoué. Les migrations sont-elles appliquées ?" };
   }
+}
+
+export async function syncStravaAction(): Promise<void> {
+  await guard();
+  let target = "/compte?strava=synchro";
+  try {
+    await syncStrava(new Date(`${PLAN_START}T00:00:00Z`), matchActivities);
+  } catch {
+    target = "/compte?strava=erreur";
+  }
+  revalidatePath("/plan", "layout");
+  redirect(target);
+}
+
+export async function disconnectStravaAction(): Promise<void> {
+  await guard();
+  await disconnectStrava();
+  redirect("/compte?strava=deconnecte");
 }

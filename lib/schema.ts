@@ -135,6 +135,47 @@ export const SCHEMA_STATEMENTS: string[] = [
      unique (week, position)
    )`,
 
+  // Comptes reliés (Strava). Une ligne par service ; les jetons ne quittent
+  // jamais le serveur.
+  `create table if not exists integrations (
+     provider       text primary key,
+     athlete_id     text,
+     athlete_name   text,
+     access_token   text not null,
+     refresh_token  text not null,
+     expires_at     timestamptz not null,
+     connected_at   timestamptz not null default now(),
+     last_sync_at   timestamptz
+   )`,
+
+  // Activités importées (Strava, et Garmin à travers Strava). L'identifiant
+  // est celui du service : réimporter ne crée pas de doublon.
+  `create table if not exists activities (
+     id              text primary key,
+     source          text not null,
+     name            text not null,
+     sport_type      text not null,
+     start_date      timestamptz not null,
+     moving_seconds  integer not null default 0,
+     elapsed_seconds integer not null default 0,
+     distance_meters integer not null default 0,
+     climb_meters    integer not null default 0,
+     imported_at     timestamptz not null default now()
+   )`,
+  `create index if not exists activities_start on activities (start_date desc)`,
+
+  // Une séance du plan cochée par une activité importée garde le lien.
+  `alter table plan_sessions add column if not exists activity_id text references activities(id) on delete set null`,
+
+  // Adaptation du plan : un coefficient par semaine, décidé au début de la
+  // semaine d'après ce qui a été fait la semaine précédente.
+  `create table if not exists plan_adjustments (
+     week        smallint primary key,
+     factor      numeric(4, 2) not null check (factor between 0.5 and 1.2),
+     reason      text not null,
+     decided_at  timestamptz not null default now()
+   )`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (

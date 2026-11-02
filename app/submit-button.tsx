@@ -16,17 +16,20 @@ export function SubmitButton({
   children,
   pendingLabel,
   className,
+  style,
 }: {
   children: React.ReactNode;
   /** Ce qu'affiche le bouton pendant l'action : « Enregistrement… ». */
   pendingLabel: string;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       className={className}
+      style={style}
       disabled={pending}
       aria-busy={pending}
     >

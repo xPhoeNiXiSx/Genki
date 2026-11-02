@@ -2,7 +2,8 @@ import { query } from "@/lib/db";
 
 /**
  * Sauvegarde complète de l'appli, en JSON : exercices, séances (programmes),
- * étapes, historique, réglages et listes.
+ * étapes, historique, réglages, listes, plan et activités importées. Les
+ * jetons des comptes reliés (Strava) n'y figurent jamais.
  *
  * L'import est une restauration : il remplace toutes les données par celles
  * du fichier. Les colonnes absentes d'un fichier plus ancien reprennent leur
@@ -57,14 +58,26 @@ const TABLES: { table: string; columns: Column[] }[] = [
     columns: [{ name: "kind" }, { name: "name" }],
   },
   {
+    table: "activities",
+    columns: [
+      { name: "id" }, { name: "source" }, { name: "name" }, { name: "sport_type" }, { name: "start_date" },
+      { name: "moving_seconds", fallback: 0 }, { name: "elapsed_seconds", fallback: 0 }, { name: "distance_meters", fallback: 0 },
+      { name: "climb_meters", fallback: 0 }, { name: "imported_at" },
+    ],
+  },
+  {
     table: "plan_sessions",
     columns: [
       { name: "id" }, { name: "week" }, { name: "position" }, { name: "kind" }, { name: "title" }, { name: "summary" },
       { name: "why" }, { name: "blocks", fallback: [] }, { name: "target_seconds" }, { name: "target_meters", fallback: null },
       { name: "target_climb", fallback: null }, { name: "status", fallback: "todo" }, { name: "done_at", fallback: null },
       { name: "actual_seconds", fallback: null }, { name: "actual_meters", fallback: null }, { name: "actual_climb", fallback: null },
-      { name: "feeling", fallback: null }, { name: "note", fallback: null },
+      { name: "feeling", fallback: null }, { name: "note", fallback: null }, { name: "activity_id", fallback: null },
     ],
+  },
+  {
+    table: "plan_adjustments",
+    columns: [{ name: "week" }, { name: "factor" }, { name: "reason" }, { name: "decided_at" }],
   },
 ];
 

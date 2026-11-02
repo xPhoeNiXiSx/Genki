@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getPlanSession, listPlanSessions } from "@/lib/plan";
+import { getPlanSession, listAdjustments, listPlanSessions, withAdjustment } from "@/lib/plan";
 
 import { databaseBlocker } from "../../db-screens";
 import { ConfirmDelete } from "../../ui/confirm-delete";
@@ -18,8 +18,10 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   if (blocked) return blocked;
 
   const { id } = await params;
-  const session = UUID.test(id) ? await getPlanSession(id) : null;
-  if (!session) notFound();
+  const stored = UUID.test(id) ? await getPlanSession(id) : null;
+  if (!stored) notFound();
+  const adjustment = (await listAdjustments()).get(stored.week);
+  const session = withAdjustment(stored, adjustment?.factor);
   const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
 
   const stats: { label: string; value: string }[] = [
@@ -41,6 +43,9 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
       </span>
       <h1 className="display" style={{ fontSize: 32, marginTop: 10 }}>{session.title}</h1>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 14 }}>{session.summary}</p>
+      {session.adjusted && adjustment ? (
+        <p className="mono" style={{ margin: "8px 0 0", fontSize: 12 }}>Ajustée : {adjustment.reason}</p>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))`, gap: 8, marginTop: 20 }}>
         {stats.map((s, i) => (
@@ -57,6 +62,7 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
           <span style={{ display: "grid", gap: 2 }}>
             <strong>Faite</strong>
             <span className="mono" style={{ fontSize: 12 }}>{planLine(session)}</span>
+            {session.activityId ? <span className="muted" style={{ fontSize: 12 }}>importée de Strava · ajoute ton ressenti avec « Corriger »</span> : null}
             {session.note ? <span className="muted" style={{ fontSize: 13 }}>{session.note}</span> : null}
           </span>
         </div>
