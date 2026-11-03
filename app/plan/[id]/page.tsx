@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { bestView } from "@/lib/anatomy";
+import { planExerciseLinks, type PlanExerciseLink } from "@/lib/plan-exercises";
 import { glossaryFor } from "@/lib/plan-glossary";
 import { getPlanSession, listAdjustments, listPlanSessions, withAdjustment } from "@/lib/plan";
 
 import { databaseBlocker } from "../../db-screens";
+import { BodyMap } from "../../ui/body-map";
 import { ConfirmDelete } from "../../ui/confirm-delete";
 import { Icon } from "../../ui/icons";
 import { Lanes } from "../../ui/lanes";
@@ -23,6 +26,7 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   if (!stored) notFound();
   const adjustment = (await listAdjustments()).get(stored.week);
   const session = withAdjustment(stored, adjustment?.factor);
+  const links = session.kind === "renfo" ? await planExerciseLinks() : new Map<string, PlanExerciseLink>();
   const glossary = glossaryFor([session.title, session.summary, ...session.blocks.flatMap((b) => [b.label, b.detail])]);
   const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
 
@@ -72,7 +76,22 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
 
       <span className="field-label">{session.kind === "course" ? "Déroulé" : "Exercices"}</span>
       <div style={{ display: "grid", gap: 8 }}>
-        {session.blocks.map((b, i) => (
+        {session.blocks.map((b, i) => {
+          const link = links.get(b.label);
+          if (link) {
+            return (
+              <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 16px 6px 12px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
+                <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{b.label}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>{b.detail}</span>
+                </span>
+                <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
+                <Icon name="chevron" size={16} />
+              </Link>
+            );
+          }
+          return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
             <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: i === 0 ? "var(--volt)" : "var(--ink)", color: i === 0 ? "var(--ink)" : "var(--volt)", border: i === 0 ? "1.5px solid var(--ink)" : 0, display: "grid", placeItems: "center", fontSize: 11 }}>
               {String(i + 1).padStart(2, "0")}
@@ -83,8 +102,10 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
             </span>
             <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
           </div>
-        ))}
+          );
+        })}
       </div>
+      {links.size > 0 ? <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Touche un exercice pour voir comment le faire.</p> : null}
 
       <div className="galet ink" style={{ marginTop: 14, borderRadius: 22, padding: "14px 18px", fontSize: 13, lineHeight: 1.45 }}>
         <strong style={{ color: "var(--volt)" }}>Pourquoi</strong> — {session.why}

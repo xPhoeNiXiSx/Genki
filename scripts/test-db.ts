@@ -30,6 +30,7 @@ import {
 } from "../lib/plan";
 import { planKindOf, saveActivities } from "../lib/activities";
 import { fromIntervals } from "../lib/intervals";
+import { planExerciseLinks } from "../lib/plan-exercises";
 import { glossaryFor } from "../lib/plan-glossary";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
@@ -492,6 +493,14 @@ async function trainingPlan() {
   // Chaque séance du plan a au moins un mot expliqué.
   assert.ok(planned.every((x) => glossaryFor([x.title, x.summary, ...x.blocks.flatMap((b) => [b.label, b.detail])]).length > 0));
   ok("chaque séance explique ses mots : fartlek, seuil, excentrique, squat bulgare…");
+
+  const links = await planExerciseLinks();
+  const renfoLabels = new Set(planned.filter((x) => x.kind === "renfo").flatMap((x) => x.blocks.map((b) => b.label)));
+  assert.ok([...renfoLabels].every((label) => links.has(label)));
+  const again2 = await planExerciseLinks();
+  assert.equal(again2.get("Squats")?.id, links.get("Squats")?.id);
+  assert.match((await getExercise(links.get("Squat bulgare")!.id))?.description ?? "", /pied arrière/);
+  ok("chaque exercice de renfo a sa fiche dans la bibliothèque, créée une seule fois");
 
   // intervals.icu : une activité se traduit, se range par type, ne s'importe qu'une fois.
   const run = fromIntervals({ id: "i42", name: "Sortie du dimanche", type: "TrailRun", source: "GARMIN_CONNECT", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 })!;

@@ -12,11 +12,15 @@ import { setExerciseActiveAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function ExercisePage({ params }: { params: Promise<{ id: string }> }) {
+/** Retour vers une séance du plan, quand on vient de là. */
+const PLAN_RETURN = /^\/plan\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function ExercisePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ retour?: string }> }) {
   const blocked = await databaseBlocker();
   if (blocked) return blocked;
 
-  const { id } = await params;
+  const [{ id }, { retour }] = await Promise.all([params, searchParams]);
+  const back = retour && PLAN_RETURN.test(retour) ? retour : "/exercices";
   const exercise = UUID.test(id) ? await getExercise(id) : null;
   if (!exercise) notFound();
 
@@ -24,7 +28,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
     <main className="screen bare">
       <Lanes />
       <div className="top-bar">
-        <Link href="/exercices" className="round" aria-label="Retour aux exercices"><Icon name="back" size={20} /></Link>
+        <Link href={back} className="round" aria-label={back === "/exercices" ? "Retour aux exercices" : "Retour à la séance"}><Icon name="back" size={20} /></Link>
         <Link href={`/exercices/${exercise.id}/modifier`} className="round" aria-label="Modifier l'exercice"><Icon name="edit" size={18} /></Link>
       </div>
 
@@ -73,7 +77,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
       {exercise.description ? (
         <>
           <h2 className="section">Description</h2>
-          <p style={{ margin: 0, lineHeight: 1.45, fontSize: 14, opacity: 0.85 }}>{exercise.description}</p>
+          <p style={{ margin: 0, lineHeight: 1.5, fontSize: 14, opacity: 0.85, whiteSpace: "pre-line" }}>{exercise.description}</p>
         </>
       ) : null}
 
