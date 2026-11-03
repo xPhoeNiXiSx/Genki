@@ -30,6 +30,7 @@ import {
 } from "../lib/plan";
 import { planKindOf, saveActivities } from "../lib/activities";
 import { fromIntervals } from "../lib/intervals";
+import { glossaryFor } from "../lib/plan-glossary";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
@@ -479,6 +480,18 @@ async function trainingPlan() {
   assert.equal(currentWeek("2027-05-01"), 16);
   assert.equal(daysToRace("2026-11-30", "2027-03-20"), 110);
   ok("la semaine en cours et le compte à rebours suivent le calendrier");
+
+  const fartlek = planned.find((x) => x.title === "Fartlek")!;
+  const words = glossaryFor([fartlek.title, fartlek.summary, ...fartlek.blocks.flatMap((b) => [b.label, b.detail])]).map((g) => g.term);
+  assert.ok(words.includes("Fartlek"));
+  assert.ok(words.includes("Échauffement"));
+  const renfoB = planned.find((x) => x.title.startsWith("Renfo B"))!;
+  const renfoWords = glossaryFor([renfoB.title, renfoB.summary, ...renfoB.blocks.flatMap((b) => [b.label, b.detail])]).map((g) => g.term);
+  assert.ok(renfoWords.includes("Squat bulgare") && !renfoWords.includes("Squat"));
+  assert.ok(renfoWords.includes("Excentrique") && renfoWords.includes("Proprioception (proprio)"));
+  // Chaque séance du plan a au moins un mot expliqué.
+  assert.ok(planned.every((x) => glossaryFor([x.title, x.summary, ...x.blocks.flatMap((b) => [b.label, b.detail])]).length > 0));
+  ok("chaque séance explique ses mots : fartlek, seuil, excentrique, squat bulgare…");
 
   // intervals.icu : une activité se traduit, se range par type, ne s'importe qu'une fois.
   const run = fromIntervals({ id: "i42", name: "Sortie du dimanche", type: "TrailRun", source: "GARMIN_CONNECT", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 })!;

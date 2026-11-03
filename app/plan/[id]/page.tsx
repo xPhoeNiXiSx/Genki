@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { glossaryFor } from "@/lib/plan-glossary";
 import { getPlanSession, listAdjustments, listPlanSessions, withAdjustment } from "@/lib/plan";
 
 import { databaseBlocker } from "../../db-screens";
@@ -22,6 +23,7 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   if (!stored) notFound();
   const adjustment = (await listAdjustments()).get(stored.week);
   const session = withAdjustment(stored, adjustment?.factor);
+  const glossary = glossaryFor([session.title, session.summary, ...session.blocks.flatMap((b) => [b.label, b.detail])]);
   const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
 
   const stats: { label: string; value: string }[] = [
@@ -87,6 +89,22 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
       <div className="galet ink" style={{ marginTop: 14, borderRadius: 22, padding: "14px 18px", fontSize: 13, lineHeight: 1.45 }}>
         <strong style={{ color: "var(--volt)" }}>Pourquoi</strong> — {session.why}
       </div>
+
+      {glossary.length > 0 ? (
+        <>
+          <span className="field-label">Les mots de la séance</span>
+          <div className="settings" style={{ padding: "4px 0" }}>
+            {glossary.map((g) => (
+              <details key={g.term} style={{ padding: "12px 18px", borderTop: "1px solid var(--line)" }}>
+                <summary style={{ listStyle: "none", fontWeight: 900, fontSize: 15, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  {g.term} <Icon name="chevron" size={16} />
+                </summary>
+                <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.5 }}>{g.text}</p>
+              </details>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <div style={{ marginTop: "auto", paddingTop: 22 }}>
         {session.status === "todo" ? (
