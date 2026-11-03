@@ -28,7 +28,8 @@ import {
   weekProgress,
   withAdjustment,
 } from "../lib/plan";
-import { fromStrava, newState, planKindOf, saveActivities, verifyState } from "../lib/strava";
+import { planKindOf, saveActivities } from "../lib/activities";
+import { fromIntervals } from "../lib/intervals";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
@@ -479,19 +480,23 @@ async function trainingPlan() {
   assert.equal(daysToRace("2026-11-30", "2027-03-20"), 110);
   ok("la semaine en cours et le compte à rebours suivent le calendrier");
 
-  // Strava : une activité se traduit, se range par type, ne s'importe qu'une fois.
-  const run = fromStrava({ id: 42, name: "Sortie du dimanche", sport_type: "TrailRun", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 });
-  assert.deepEqual([run.id, run.distanceMeters, run.climbMeters, run.movingSeconds], ["strava:42", 11235, 96, 4980]);
+  // intervals.icu : une activité se traduit, se range par type, ne s'importe qu'une fois.
+  const run = fromIntervals({ id: "i42", name: "Sortie du dimanche", type: "TrailRun", source: "GARMIN_CONNECT", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 })!;
+  assert.deepEqual([run.id, run.localDate, run.distanceMeters, run.climbMeters, run.movingSeconds], ["intervals:i42", "2026-12-06", 11235, 96, 4980]);
+  assert.equal(fromIntervals({ id: "i9", type: "Run", source: "STRAVA", start_date_local: "2026-12-06T09:30:00" }), null);
   assert.equal(planKindOf("Run"), "course");
   assert.equal(planKindOf("WeightTraining"), "renfo");
   assert.equal(planKindOf("Ride"), null);
-  const strength = fromStrava({ id: 43, name: "Renfo", sport_type: "WeightTraining", start_date: "2026-12-02T18:00:00Z", moving_time: 1900 });
-  const ride = fromStrava({ id: 44, name: "Vélo", sport_type: "Ride", start_date: "2026-12-03T18:00:00Z", moving_time: 3600, distance: 30000 });
-  const outside = fromStrava({ id: 45, name: "Avant le plan", sport_type: "Run", start_date: "2026-11-20T08:00:00Z", moving_time: 2700, distance: 6500 });
+  // Un footing tard le soir reste dans sa journée, et donc dans sa semaine.
+  const late = fromIntervals({ id: "i40", type: "Run", start_date_local: "2026-12-06T23:30:00", moving_time: 1800, distance: 4000 })!;
+  assert.equal(late.localDate, "2026-12-06");
+  const strength = fromIntervals({ id: "i43", name: "Renfo", type: "WeightTraining", start_date_local: "2026-12-02T19:00:00", moving_time: 1900 })!;
+  const ride = fromIntervals({ id: "i44", name: "Vélo", type: "Ride", start_date_local: "2026-12-03T19:00:00", moving_time: 3600, distance: 30000 })!;
+  const outside = fromIntervals({ id: "i45", name: "Avant le plan", type: "Run", start_date_local: "2026-11-20T09:00:00", moving_time: 2700, distance: 6500 })!;
   const fresh = await saveActivities([run, strength, ride, outside]);
   assert.equal(fresh.length, 4);
   assert.equal((await saveActivities([run])).length, 0);
-  ok("une activité Strava se traduit, se range par type et ne s'importe qu'une fois");
+  ok("une activité d'intervals.icu se traduit, se range par type et ne s'importe qu'une fois ; les coquilles Strava sont écartées");
 
   assert.equal(planWeekOf("2026-11-29"), null);
   assert.equal(planWeekOf("2026-12-06"), 1);
@@ -500,19 +505,11 @@ async function trainingPlan() {
   const long = week1.find((x) => x.title === "Sortie longue")!;
   assert.equal(long.status, "done");
   assert.equal(long.actualMeters, 11235);
-  assert.equal(long.activityId, "strava:42");
+  assert.equal(long.activityId, "intervals:i42");
   assert.equal(week1.filter((x) => x.kind === "renfo" && x.status === "done").length, 1);
   assert.equal(week1.find((x) => x.title === "Footing en endurance")!.status, "todo");
   assert.equal(await matchActivities([run]), 0);
   ok("une sortie importée coche, dans sa semaine, la séance du même type à la durée la plus proche");
-
-  process.env.AUTH_SECRET ??= "secret-de-test";
-  const state = await newState(1_000_000);
-  assert.ok(await verifyState(state, 1_000_000 + 60_000));
-  assert.ok(!(await verifyState(state, 1_000_000 + 11 * 60_000)));
-  assert.ok(!(await verifyState(state.replace(/.$/, (c) => (c === "a" ? "b" : "a")), 1_000_000)));
-  assert.ok(!(await verifyState(null)));
-  ok("le retour de Strava n'est accepté qu'avec un état signé de moins de dix minutes");
 
   // Adaptation.
   const mk = (kind: "course" | "renfo", status: "todo" | "done" | "skipped", feeling: number | null = null) =>

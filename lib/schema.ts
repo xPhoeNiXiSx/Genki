@@ -135,7 +135,7 @@ export const SCHEMA_STATEMENTS: string[] = [
      unique (week, position)
    )`,
 
-  // Comptes reliés (Strava). Une ligne par service ; les jetons ne quittent
+  // Comptes reliés (intervals.icu). Une ligne par service ; la clé ne quitte
   // jamais le serveur.
   `create table if not exists integrations (
      provider       text primary key,
@@ -148,7 +148,7 @@ export const SCHEMA_STATEMENTS: string[] = [
      last_sync_at   timestamptz
    )`,
 
-  // Activités importées (Strava, et Garmin à travers Strava). L'identifiant
+  // Activités importées (intervals.icu, qui les reçoit de Garmin). L'identifiant
   // est celui du service : réimporter ne crée pas de doublon.
   `create table if not exists activities (
      id              text primary key,

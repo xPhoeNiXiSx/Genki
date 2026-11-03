@@ -62,7 +62,7 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
           <span style={{ display: "grid", gap: 2 }}>
             <strong>Faite</strong>
             <span className="mono" style={{ fontSize: 12 }}>{planLine(session)}</span>
-            {session.activityId ? <span className="muted" style={{ fontSize: 12 }}>importée de Strava · ajoute ton ressenti avec « Corriger »</span> : null}
+            {session.activityId ? <span className="muted" style={{ fontSize: 12 }}>importée d&apos;intervals.icu · ajoute ton ressenti avec « Corriger »</span> : null}
             {session.note ? <span className="muted" style={{ fontSize: 13 }}>{session.note}</span> : null}
           </span>
         </div>

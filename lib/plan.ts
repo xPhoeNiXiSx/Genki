@@ -1,8 +1,6 @@
-import { parisToday } from "@/lib/dates";
 import { query } from "@/lib/db";
 import { PLAN_START, PLAN_WEEKS, plannedSessions, type PlanBlock, type PlanKind, type PlanWeek } from "@/lib/plan-data";
-import type { Activity } from "@/lib/strava";
-import { planKindOf } from "@/lib/strava";
+import { planKindOf, type Activity } from "@/lib/activities";
 
 export type PlanStatus = "todo" | "done" | "skipped";
 
@@ -25,7 +23,7 @@ export type PlanSession = {
   actualClimb: number | null;
   feeling: number | null;
   note: string | null;
-  /** Activité importée (Strava) qui a coché la séance. */
+  /** Activité importée (intervals.icu) qui a coché la séance. */
   activityId: string | null;
 };
 
@@ -241,7 +239,7 @@ export async function matchActivities(activities: Activity[]): Promise<number> {
   let checked = 0;
   for (const a of [...activities].sort((x, y) => x.startDate.getTime() - y.startDate.getTime())) {
     const kind = planKindOf(a.sportType);
-    const week = planWeekOf(parisToday(a.startDate));
+    const week = planWeekOf(a.localDate);
     if (!kind || !week || sessions.some((s) => s.activityId === a.id)) continue;
     const candidates = sessions.filter((s) => s.week === week && s.kind === kind && s.status === "todo");
     if (candidates.length === 0) continue;

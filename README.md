@@ -37,11 +37,11 @@ Variables d'environnement à poser (Settings → Environment Variables) :
 - `DATABASE_URL` — chaîne de connexion Neon
 - `APP_PASSWORD` — le mot de passe de connexion
 - `AUTH_SECRET` — une longue chaîne aléatoire, qui signe la session
-- `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET` — facultatives, pour importer
-  les sorties. Elles viennent d'une application créée sur
-  [strava.com/settings/api](https://www.strava.com/settings/api), avec
-  `genki-eight.vercel.app` comme « Authorization Callback Domain ». Une
-  montre Garmin passe par Strava (appli Garmin Connect → Strava).
+
+Import des sorties : facultatif, via [intervals.icu](https://intervals.icu)
+(gratuit, relié à Garmin Connect). L'ID athlète et la clé API
+(intervals.icu → Settings → Developer Settings) se saisissent dans Réglages ;
+aucune variable Vercel n'est nécessaire.
 
 ## Développement
 

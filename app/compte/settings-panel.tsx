@@ -7,8 +7,9 @@ import type { SettingKey, Settings } from "@/lib/settings";
 
 import { logoutAction } from "../login/actions";
 import { SubmitButton } from "../submit-button";
+import { ConfirmDelete } from "../ui/confirm-delete";
 import { Icon } from "../ui/icons";
-import { disconnectStravaAction, importAction, migrateAction, saveSettingAction, syncStravaAction, type ImportState } from "./actions";
+import { connectIntervalsAction, disconnectIntervalsAction, importAction, migrateAction, saveSettingAction, syncIntervalsAction, type ImportState, type IntervalsState } from "./actions";
 
 const TOGGLES: { key: Exclude<SettingKey, "signalSound">; label: string; hint: string }[] = [
   { key: "signal", label: "Signal sonore", hint: "à chaque changement d'étape" },
@@ -33,17 +34,17 @@ function Switch({ on, label, onToggle }: { on: boolean; label: string; onToggle:
   );
 }
 
-export type StravaState = {
-  configured: boolean;
+export type IntervalsPanelState = {
   athleteName: string | null;
   connected: boolean;
   lastSync: string | null;
   notice: string | null;
 };
 
-export function SettingsPanel({ initial, migrated, strava }: { initial: Settings; migrated: boolean; strava: StravaState }) {
+export function SettingsPanel({ initial, migrated, intervals }: { initial: Settings; migrated: boolean; intervals: IntervalsPanelState }) {
   const [settings, setSettings] = useState(initial);
   const [soundSheet, setSoundSheet] = useState(false);
+  const [intervalsSheet, setIntervalsSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importState, importFormAction, importing] = useActionState<ImportState, FormData>(importAction, {});
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -88,39 +89,43 @@ export function SettingsPanel({ initial, migrated, strava }: { initial: Settings
       <div className="settings">
         <div className="setting-row" style={{ cursor: "default" }}>
           <span>
-            <span style={{ display: "block", fontWeight: 900 }}>Strava</span>
+            <span style={{ display: "block", fontWeight: 900 }}>intervals.icu</span>
             <span className="muted" style={{ fontSize: 12 }}>
-              {!strava.configured
-                ? "à activer côté Vercel (clés Strava)"
-                : strava.connected
-                  ? `${strava.athleteName ?? "compte relié"} · ${strava.lastSync ? `synchro ${strava.lastSync}` : "pas encore synchronisé"}`
-                  : "importe tes sorties et coche le plan"}
+              {intervals.connected
+                ? `${intervals.athleteName ?? "compte relié"} · ${intervals.lastSync ? `synchro ${intervals.lastSync}` : "pas encore synchronisé"}`
+                : "importe tes sorties et coche le plan"}
             </span>
           </span>
-          {!strava.configured ? (
-            <span className="chip" style={{ height: 26, fontSize: 11 }}>À configurer</span>
-          ) : strava.connected ? (
-            <form action={syncStravaAction}>
+          {intervals.connected ? (
+            <form action={syncIntervalsAction}>
               <SubmitButton className="chip" style={{ height: 32, fontSize: 12 }} pendingLabel="Synchro…">Synchroniser</SubmitButton>
             </form>
           ) : (
-            <a href="/api/strava/connect" className="chip on" style={{ height: 32, fontSize: 12 }}>Connecter</a>
+            <button type="button" className="chip on" style={{ height: 32, fontSize: 12 }} onClick={() => setIntervalsSheet(true)}>Relier</button>
           )}
         </div>
         <div className="setting-row" style={{ cursor: "default" }}>
           <span>
             <span style={{ display: "block", fontWeight: 900 }}>Garmin Connect</span>
-            <span className="muted" style={{ fontSize: 12 }}>relie ta montre à Strava dans l&apos;appli Garmin Connect : ses sorties arrivent ici par Strava</span>
+            <span className="muted" style={{ fontSize: 12 }}>relie Garmin à intervals.icu (Settings → Connections) : tes sorties arrivent ici par là</span>
           </span>
-          <span className="chip" style={{ height: 26, fontSize: 11 }}>via Strava</span>
+          <span className="chip" style={{ height: 26, fontSize: 11 }}>via intervals</span>
         </div>
       </div>
-      {strava.notice ? <p className={strava.notice.startsWith("✓") ? "muted" : "error"} role="status" style={{ marginTop: 10 }}>{strava.notice}</p> : null}
-      {strava.connected ? (
-        <form action={disconnectStravaAction} style={{ marginTop: 6 }}>
-          <SubmitButton className="btn" style={{ background: "transparent", color: "var(--grey)", width: "100%", height: 44 }} pendingLabel="Déconnexion…">Déconnecter Strava</SubmitButton>
-        </form>
+      {intervals.notice ? <p className={intervals.notice.startsWith("✓") ? "muted" : "error"} role="status" style={{ marginTop: 10 }}>{intervals.notice}</p> : null}
+      {intervals.connected ? (
+        <ConfirmDelete
+          action={disconnectIntervalsAction}
+          title="Déconnecter intervals.icu ?"
+          message="Les nouvelles sorties ne seront plus importées. Celles déjà importées restent sur le plan."
+          confirmLabel="Déconnecter"
+          className="btn"
+          style={{ background: "transparent", color: "var(--grey)", width: "100%", height: 44, marginTop: 6 }}
+        >
+          Déconnecter intervals.icu
+        </ConfirmDelete>
       ) : null}
+      {intervalsSheet ? <IntervalsSheet onClose={() => setIntervalsSheet(false)} /> : null}
 
       <span className="field-label">Données</span>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -208,5 +213,33 @@ export function SettingsPanel({ initial, migrated, strava }: { initial: Settings
         </div>
       ) : null}
     </>
+  );
+}
+
+/** Saisie de l'ID athlète et de la clé API d'intervals.icu. */
+function IntervalsSheet({ onClose }: { onClose: () => void }) {
+  const [state, action, pending] = useActionState<IntervalsState, FormData>(connectIntervalsAction, {});
+  return (
+    <div className="sheet-veil" onClick={onClose}>
+      <form action={action} className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Relier intervals.icu">
+        <h2 className="display" style={{ fontSize: 22 }}>Relier intervals.icu</h2>
+        <ol className="muted" style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
+          <li>Crée un compte gratuit sur <a href="https://intervals.icu" target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>intervals.icu</a> et relie Garmin (Settings → Connections).</li>
+          <li>Dans Settings → Developer Settings, copie ton <strong>ID athlète</strong> et génère une <strong>clé API</strong>.</li>
+        </ol>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span className="field-label">ID athlète</span>
+          <input name="athlete" className="input mono" placeholder="i123456" autoComplete="off" autoCapitalize="none" spellCheck={false} />
+        </label>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span className="field-label">Clé API</span>
+          <input name="key" className="input mono" type="password" required autoComplete="off" autoCapitalize="none" spellCheck={false} />
+        </label>
+        {state.error ? <p className="error" role="alert" style={{ marginTop: 12 }}>{state.error}</p> : null}
+        <button type="submit" className="btn wide" style={{ marginTop: 18 }} disabled={pending}>
+          {pending ? "Vérification…" : "Relier et importer"}
+        </button>
+      </form>
+    </div>
   );
 }

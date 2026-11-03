@@ -9,7 +9,7 @@ import { runMigrations } from "@/lib/db";
 import { matchActivities } from "@/lib/plan";
 import { PLAN_START } from "@/lib/plan-data";
 import { saveSetting, validSetting, type SettingKey, type Settings } from "@/lib/settings";
-import { disconnectStrava, syncStrava } from "@/lib/strava";
+import { connectIntervals, disconnectIntervals, syncIntervals } from "@/lib/intervals";
 
 async function guard() {
   if (!(await isAuthenticated())) redirect("/login?next=/compte");
@@ -54,20 +54,37 @@ export async function importAction(_state: ImportState, form: FormData): Promise
   }
 }
 
-export async function syncStravaAction(): Promise<void> {
+export type IntervalsState = { error?: string };
+
+/** Relie intervals.icu avec l'ID athlète et la clé API, puis importe le plan. */
+export async function connectIntervalsAction(_state: IntervalsState, form: FormData): Promise<IntervalsState> {
   await guard();
-  let target = "/compte?strava=synchro";
+  const result = await connectIntervals(form.get("athlete"), form.get("key"));
+  if ("error" in result) return { error: result.error };
+  let target = "/compte?sync=ok";
   try {
-    await syncStrava(new Date(`${PLAN_START}T00:00:00Z`), matchActivities);
+    await syncIntervals(PLAN_START, matchActivities);
   } catch {
-    target = "/compte?strava=erreur";
+    target = "/compte?sync=relie";
   }
   revalidatePath("/plan", "layout");
   redirect(target);
 }
 
-export async function disconnectStravaAction(): Promise<void> {
+export async function syncIntervalsAction(): Promise<void> {
   await guard();
-  await disconnectStrava();
-  redirect("/compte?strava=deconnecte");
+  let target = "/compte?sync=synchro";
+  try {
+    await syncIntervals(PLAN_START, matchActivities);
+  } catch {
+    target = "/compte?sync=erreur";
+  }
+  revalidatePath("/plan", "layout");
+  redirect(target);
+}
+
+export async function disconnectIntervalsAction(): Promise<void> {
+  await guard();
+  await disconnectIntervals();
+  redirect("/compte?sync=deconnecte");
 }

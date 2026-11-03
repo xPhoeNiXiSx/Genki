@@ -3,7 +3,7 @@ import Link from "next/link";
 import { parisToday } from "@/lib/dates";
 import { currentWeek, daysToRace, ensureAdjustment, listAdjustments, listPlanSessions, matchActivities, weekProgress, withAdjustment, type PlanSession } from "@/lib/plan";
 import { PHASES, PLAN_START, PLAN_WEEKS, RACE } from "@/lib/plan-data";
-import { getStravaConnection, syncStrava } from "@/lib/strava";
+import { getIntervalsConnection, syncIntervals } from "@/lib/intervals";
 
 import { databaseBlocker } from "../db-screens";
 import { Icon } from "../ui/icons";
@@ -124,15 +124,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 }
 
 /**
- * Strava relié : les sorties récentes cochent le plan à l'ouverture, au plus
+ * intervals.icu relié : les sorties récentes cochent le plan à l'ouverture, au plus
  * toutes les 30 minutes, sans jamais bloquer la page plus de 6 secondes.
  */
 async function syncIfStale(): Promise<void> {
-  const connection = await getStravaConnection().catch(() => null);
+  const connection = await getIntervalsConnection().catch(() => null);
   if (!connection) return;
   if (connection.lastSyncAt && Date.now() - connection.lastSyncAt.getTime() < 30 * 60_000) return;
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, 6000));
-  await Promise.race([syncStrava(new Date(`${PLAN_START}T00:00:00Z`), matchActivities).catch(() => undefined), timeout]);
+  await Promise.race([syncIntervals(PLAN_START, matchActivities).catch(() => undefined), timeout]);
 }
 
 function SessionCard({ session: s, next }: { session: PlanSession & { adjusted?: boolean }; next: boolean }) {

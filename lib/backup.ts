@@ -3,7 +3,7 @@ import { query } from "@/lib/db";
 /**
  * Sauvegarde complète de l'appli, en JSON : exercices, séances (programmes),
  * étapes, historique, réglages, listes, plan et activités importées. Les
- * jetons des comptes reliés (Strava) n'y figurent jamais.
+ * clés des comptes reliés (intervals.icu) n'y figurent jamais.
  *
  * L'import est une restauration : il remplace toutes les données par celles
  * du fichier. Les colonnes absentes d'un fichier plus ancien reprennent leur
