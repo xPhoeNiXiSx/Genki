@@ -50,6 +50,8 @@ function blankToNull(value: FormDataEntryValue | null): string | null {
  * elle reste disponible hors ligne avec le reste de la fiche.
  */
 const IMAGE_DATA = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+/** Les illustrations fournies avec l'application (exercices du plan). */
+const IMAGE_BUNDLED = /^\/illustrations\/[a-z0-9-]+\.jpg$/;
 /** Environ 500 Ko d'image : largement assez pour 900 px en JPEG. */
 export const MAX_IMAGE_CHARS = 700_000;
 
@@ -64,7 +66,7 @@ export function parseExerciseForm(
   if (!category) return { error: "Choisis une catégorie." };
 
   const imageUrl = blankToNull(form.get("imageUrl"));
-  if (imageUrl && !/^https:\/\//.test(imageUrl) && !IMAGE_DATA.test(imageUrl)) {
+  if (imageUrl && !/^https:\/\//.test(imageUrl) && !IMAGE_DATA.test(imageUrl) && !IMAGE_BUNDLED.test(imageUrl)) {
     return { error: "Cette image n'est pas lisible. Choisis une photo JPEG, PNG ou WebP." };
   }
   if (imageUrl && imageUrl.length > MAX_IMAGE_CHARS) {

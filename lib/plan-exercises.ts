@@ -5,16 +5,20 @@ import { normalizeMuscles, type MuscleKey } from "@/lib/muscles";
 /**
  * Les exercices des renfos du plan, en fiches de la bibliothèque : chaque
  * ligne de renfo ouvre sa fiche (pas-à-pas, muscles sur la planche
- * anatomique, photo si on en ajoute une). Les fiches sont créées à la
+ * anatomique, illustration du mouvement). Les fiches sont créées à la
  * première visite, sous leur nom ; une fiche existante du même nom sert
- * telle quelle.
+ * telle quelle, et reçoit l'illustration si elle n'a pas encore d'image.
  */
 
-type PlanExercise = { label: string; name: string; muscles: MuscleKey[]; equipment: string | null; description: string };
+/** Les illustrations vivent dans `public/illustrations`. */
+const illustration = (slug: string) => `/illustrations/${slug}.jpg`;
+
+type PlanExercise = { label: string; image: string; name: string; muscles: MuscleKey[]; equipment: string | null; description: string };
 
 const EXERCISES: PlanExercise[] = [
   {
     label: "Squats",
+    image: "squat",
     name: "Squat",
     muscles: ["quadriceps", "fessiers", "adducteurs"],
     equipment: null,
@@ -22,6 +26,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Fentes avant",
+    image: "fentes-avant",
     name: "Fentes avant",
     muscles: ["quadriceps", "fessiers", "ischio-jambiers"],
     equipment: null,
@@ -29,6 +34,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Montées sur marche",
+    image: "montees-sur-marche",
     name: "Montées sur marche",
     muscles: ["quadriceps", "fessiers", "mollets"],
     equipment: "Marche ou banc",
@@ -36,6 +42,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Pont fessier",
+    image: "pont-fessier",
     name: "Pont fessier",
     muscles: ["fessiers", "ischio-jambiers", "lombaires"],
     equipment: "Tapis",
@@ -43,6 +50,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Ischios (pont une jambe)",
+    image: "pont-une-jambe",
     name: "Pont fessier une jambe",
     muscles: ["ischio-jambiers", "fessiers"],
     equipment: "Tapis",
@@ -50,6 +58,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Gainage face + côtés",
+    image: "gainage",
     name: "Gainage face et côtés",
     muscles: ["abdominaux", "obliques", "lombaires", "epaules"],
     equipment: "Tapis",
@@ -57,6 +66,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Gainage dynamique",
+    image: "mountain-climbers",
     name: "Mountain climbers",
     muscles: ["abdominaux", "obliques", "epaules"],
     equipment: "Tapis",
@@ -64,6 +74,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Mollets",
+    image: "mollets",
     name: "Mollets sur marche",
     muscles: ["mollets"],
     equipment: "Marche ou banc",
@@ -71,6 +82,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Descentes de marche lentes",
+    image: "descentes-de-marche",
     name: "Descentes de marche lentes",
     muscles: ["quadriceps", "fessiers"],
     equipment: "Marche ou banc",
@@ -78,6 +90,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Squat bulgare",
+    image: "squat-bulgare",
     name: "Squat bulgare",
     muscles: ["quadriceps", "fessiers", "adducteurs"],
     equipment: "Marche ou banc",
@@ -85,6 +98,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Équilibre sur une jambe",
+    image: "equilibre",
     name: "Équilibre sur une jambe",
     muscles: ["mollets", "fessiers"],
     equipment: null,
@@ -92,6 +106,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Chevilles à l'élastique",
+    image: "chevilles-elastique",
     name: "Chevilles à l'élastique",
     muscles: ["mollets"],
     equipment: "Élastique",
@@ -99,6 +114,7 @@ const EXERCISES: PlanExercise[] = [
   },
   {
     label: "Sauts légers",
+    image: "sauts-legers",
     name: "Sauts légers",
     muscles: ["mollets", "quadriceps"],
     equipment: null,
@@ -110,8 +126,8 @@ export type PlanExerciseLink = { id: string; muscles: MuscleKey[] };
 
 /** Crée les fiches qui manquent ; renvoie, par libellé de bloc, la fiche à ouvrir. */
 export async function planExerciseLinks(): Promise<Map<string, PlanExerciseLink>> {
-  const rows = await query<{ id: string; name: string; muscles: string[] }>(
-    `select id, name, muscles from exercises where lower(name) = any($1::text[])`,
+  const rows = await query<{ id: string; name: string; muscles: string[]; image_url: string | null }>(
+    `select id, name, muscles, image_url from exercises where lower(name) = any($1::text[])`,
     [EXERCISES.map((e) => e.name.toLowerCase())],
   );
   const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r]));
@@ -119,13 +135,16 @@ export async function planExerciseLinks(): Promise<Map<string, PlanExerciseLink>
   for (const e of EXERCISES) {
     const found = byName.get(e.name.toLowerCase());
     if (found) {
+      if (!found.image_url) {
+        await query(`update exercises set image_url = $2 where id = $1`, [found.id, illustration(e.image)]);
+      }
       links.set(e.label, { id: found.id, muscles: normalizeMuscles(found.muscles) });
       continue;
     }
     const id = await createExercise({
       name: e.name,
       description: e.description,
-      imageUrl: null,
+      imageUrl: illustration(e.image),
       category: "Musculaire",
       equipment: e.equipment,
       muscles: e.muscles,
