@@ -31,6 +31,8 @@ import {
 import { planKindOf, saveActivities } from "../lib/activities";
 import { fromIntervals } from "../lib/intervals";
 import { planExerciseLinks } from "../lib/plan-exercises";
+import { getWatchEntry, removeFromWatch, sendToWatch } from "../lib/plan-watch";
+import { workoutText } from "../lib/watch";
 import { glossaryFor } from "../lib/plan-glossary";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
@@ -108,7 +110,7 @@ async function main() {
   ok("le schéma est idempotent");
 
   // Une base restée à une version antérieure : il lui manque les derniers ajouts.
-  await query(`drop table plan_adjustments`);
+  await query(`drop table plan_watch`);
   await query(`alter table plan_sessions drop column activity_id`);
   assert.equal(await isSchemaReady(), false);
   await ensureSchema();
@@ -118,6 +120,7 @@ async function main() {
   await exercisesAndPrograms();
   await workouts();
   await trainingPlan();
+  await watchWorkouts();
   await settingsAndBackup();
   pureLogic();
 
@@ -649,6 +652,45 @@ function pureLogic() {
   assert.equal(beats.times.length, 3);
   assert.ok(Math.abs(beats.nextBeat - 11) < 1e-9);
   ok("le métronome borne le tempo et programme ses battements à 180 bpm");
+}
+
+async function watchWorkouts() {
+  const sessions = await listPlanSessions();
+  const seuil = sessions.find((s) => s.title === "Seuil")!;
+  const text = workoutText(seuil.blocks);
+  assert.match(text, /^- Échauffement 15m 7:45-7:15\/km Pace/);
+  assert.match(text, /Seuil 3x\n- Effort 8m 5:50-5:40\/km Pace\n- Récup 2m/);
+  assert.match(workoutText(sessions.find((s) => s.title === "Côtes courtes")!.blocks), /Côtes 8x\n- Montée 30s\n- Redescends au trot 2m/);
+  ok("une séance de course se traduit en entraînement structuré pour la montre");
+
+  // intervals.icu simulé : on garde les requêtes reçues.
+  const calls: { method: string; url: string; body: unknown }[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    calls.push({ method: init?.method ?? "GET", url, body: init?.body ? JSON.parse(String(init.body)) : null });
+    return new Response(JSON.stringify({ id: 4242 }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await query(`insert into integrations (provider, athlete_id, athlete_name, access_token, refresh_token, expires_at)
+                 values ('intervals', 'i1', null, 'cle-de-test', '', 'infinity') on conflict (provider) do nothing`);
+    await sendToWatch(seuil, "2026-12-03");
+    assert.deepEqual(await getWatchEntry(seuil.id), { day: "2026-12-03", eventId: "4242" });
+    assert.equal(calls[0].method, "POST");
+    assert.match(calls[0].url, /\/athlete\/i1\/events$/);
+    assert.equal((calls[0].body as { category: string }).category, "WORKOUT");
+    await sendToWatch(seuil, "2026-12-04");
+    assert.equal(calls[1].method, "PUT");
+    assert.match(calls[1].url, /\/events\/4242$/);
+    assert.equal((await getWatchEntry(seuil.id))?.day, "2026-12-04");
+    await removeFromWatch(seuil.id);
+    assert.equal(calls[2].method, "DELETE");
+    assert.equal(await getWatchEntry(seuil.id), null);
+    const renfo = sessions.find((s) => s.kind === "renfo")!;
+    await assert.rejects(sendToWatch(renfo, "2026-12-03"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  ok("une séance part sur la montre, se déplace et se retire");
 }
 
 main().catch((error) => {

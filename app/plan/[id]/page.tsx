@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { bestView } from "@/lib/anatomy";
+import { parisToday } from "@/lib/dates";
+import { getIntervalsConnection } from "@/lib/intervals";
+import { PLAN_WEEKS } from "@/lib/plan-data";
+import { getWatchEntry } from "@/lib/plan-watch";
 import { planExerciseLinks, type PlanExerciseLink } from "@/lib/plan-exercises";
 import { glossaryFor } from "@/lib/plan-glossary";
 import { getPlanSession, listAdjustments, listPlanSessions, withAdjustment } from "@/lib/plan";
@@ -12,8 +16,33 @@ import { ConfirmDelete } from "../../ui/confirm-delete";
 import { Icon } from "../../ui/icons";
 import { Lanes } from "../../ui/lanes";
 import { setPlanStatusAction } from "../actions";
-import { hoursMinutes, km, planLine } from "../format";
+import { hoursMinutes, km, planLine, shortDate } from "../format";
 import { ReportSheet } from "./report-sheet";
+import { WatchSheet, type WatchDay } from "./watch-sheet";
+
+const WEEKDAYS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+
+function addDays(iso: string, n: number): string {
+  return new Date(new Date(`${iso}T12:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** « mar. 8 déc ». */
+function dayLabel(iso: string): string {
+  return `${WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()]} ${shortDate(iso)}`;
+}
+
+/** Les 8 jours proposés : à partir d'aujourd'hui, ou du lundi de la semaine si elle n'a pas commencé. */
+function watchDays(week: number): WatchDay[] {
+  const today = parisToday();
+  const monday = PLAN_WEEKS.find((w) => w.week === week)?.monday ?? today;
+  const start = monday > today ? monday : today;
+  return Array.from({ length: 8 }, (_, i) => {
+    const value = addDays(start, i);
+    const [, m, d] = value.split("-");
+    const label = value === today ? "Auj." : value === addDays(today, 1) ? "Dem." : WEEKDAYS[new Date(`${value}T12:00:00Z`).getUTCDay()];
+    return { value, label, date: `${d}/${m}` };
+  });
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,6 +58,8 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   const links = session.kind === "renfo" ? await planExerciseLinks() : new Map<string, PlanExerciseLink>();
   const glossary = glossaryFor([session.title, session.summary, ...session.blocks.flatMap((b) => [b.label, b.detail])]);
   const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
+  const watchable = session.kind === "course" && session.status === "todo";
+  const [watch, intervals] = watchable ? await Promise.all([getWatchEntry(session.id), getIntervalsConnection()]) : [null, null];
 
   const stats: { label: string; value: string }[] = [
     { label: "Durée", value: hoursMinutes(session.targetSeconds) },
@@ -61,6 +92,10 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
           </div>
         ))}
       </div>
+
+      {watchable ? (
+        <WatchSheet sessionId={session.id} days={watchDays(session.week)} sentDay={watch?.day ?? null} sentLabel={watch ? dayLabel(watch.day) : null} connected={intervals !== null} />
+      ) : null}
 
       {session.status === "done" ? (
         <div className="galet" style={{ marginTop: 14, borderRadius: 22, display: "flex", alignItems: "center", gap: 12 }}>

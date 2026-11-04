@@ -43,6 +43,11 @@ Import des sorties : facultatif, via [intervals.icu](https://intervals.icu)
 (intervals.icu → Settings → Developer Settings) se saisissent dans Réglages ;
 aucune variable Vercel n'est nécessaire.
 
+Envoi à la montre : une sortie du plan peut partir dans le calendrier
+intervals.icu, en entraînement structuré (allures en min/km). intervals.icu
+la transmet à Garmin Connect si l'envoi des entraînements prévus est coché
+dans ses réglages Garmin.
+
 ## Développement
 
 ```bash

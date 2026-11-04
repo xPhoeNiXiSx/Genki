@@ -176,6 +176,15 @@ export const SCHEMA_STATEMENTS: string[] = [
      decided_at  timestamptz not null default now()
    )`,
 
+  // Séances du plan envoyées à la montre : l'entraînement créé dans le
+  // calendrier intervals.icu, qui le transmet à Garmin Connect.
+  `create table if not exists plan_watch (
+     session_id  uuid primary key references plan_sessions(id) on delete cascade,
+     event_id    text not null,
+     day         date not null,
+     sent_at     timestamptz not null default now()
+   )`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (

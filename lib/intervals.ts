@@ -145,3 +145,62 @@ export async function syncIntervals(since: string, matchToPlan: (activities: Act
   await query(`update integrations set last_sync_at = now() where provider = 'intervals'`);
   return { imported: fresh.length, checked };
 }
+
+/** Clé et athlète enregistrés, ou erreur lisible si intervals.icu n'est pas relié. */
+async function credentials(): Promise<{ athlete: string; key: string }> {
+  const rows = await query<{ athlete_id: string | null; access_token: string }>(
+    `select athlete_id, access_token from integrations where provider = 'intervals'`,
+  );
+  if (!rows[0]) throw new Error("Relie d'abord intervals.icu dans Mon compte.");
+  return { athlete: rows[0].athlete_id ?? "0", key: rows[0].access_token };
+}
+
+export type PlannedWorkout = { day: string; name: string; description: string; seconds: number; meters: number | null };
+
+/**
+ * Inscrit un entraînement de course au calendrier intervals.icu (ou déplace
+ * celui déjà inscrit). intervals.icu l'envoie ensuite à Garmin Connect, si
+ * l'envoi des entraînements prévus est activé de son côté. Renvoie l'id de
+ * l'entraînement.
+ */
+export async function saveWorkout(eventId: string | null, w: PlannedWorkout): Promise<string> {
+  const { athlete, key } = await credentials();
+  const body = JSON.stringify({
+    category: "WORKOUT",
+    type: "Run",
+    start_date_local: `${w.day}T00:00:00`,
+    name: w.name,
+    description: w.description,
+    moving_time: w.seconds,
+    ...(w.meters ? { distance: w.meters } : {}),
+  });
+  const headers = { Authorization: authHeader(key), "Content-Type": "application/json" };
+  const base = `${API}/athlete/${athlete}/events`;
+  let response: Response;
+  try {
+    response = eventId
+      ? await fetch(`${base}/${eventId}`, { method: "PUT", headers, body, cache: "no-store" })
+      : await fetch(base, { method: "POST", headers, body, cache: "no-store" });
+    // Supprimé entre-temps dans intervals.icu : on le recrée.
+    if (eventId && response.status === 404) response = await fetch(base, { method: "POST", headers, body, cache: "no-store" });
+  } catch {
+    throw new Error("intervals.icu est injoignable. Réessaie dans un moment.");
+  }
+  if (response.status === 401 || response.status === 403) throw new Error("intervals.icu refuse la clé enregistrée : relie-le à nouveau.");
+  if (!response.ok) throw new Error(`intervals.icu ne répond pas (${response.status}). Réessaie.`);
+  const event = (await response.json()) as { id?: string | number };
+  if (event.id === undefined) throw new Error("intervals.icu n'a pas confirmé l'envoi.");
+  return String(event.id);
+}
+
+/** Retire l'entraînement du calendrier (et donc de la montre). */
+export async function deleteWorkout(eventId: string): Promise<void> {
+  const { athlete, key } = await credentials();
+  let response: Response;
+  try {
+    response = await fetch(`${API}/athlete/${athlete}/events/${eventId}`, { method: "DELETE", headers: { Authorization: authHeader(key) }, cache: "no-store" });
+  } catch {
+    throw new Error("intervals.icu est injoignable. Réessaie dans un moment.");
+  }
+  if (!response.ok && response.status !== 404) throw new Error(`intervals.icu ne répond pas (${response.status}). Réessaie.`);
+}
