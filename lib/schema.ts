@@ -185,6 +185,22 @@ export const SCHEMA_STATEMENTS: string[] = [
      sent_at     timestamptz not null default now()
    )`,
 
+  // Fréquence cardiaque moyenne des sorties importées (pour les stats).
+  `alter table activities add column if not exists avg_hr smallint`,
+
+  // Données santé de la montre (Garmin → intervals.icu), un jour par ligne,
+  // et la forme calculée par intervals.icu (charge chronique et aiguë).
+  `create table if not exists wellness (
+     day          date primary key,
+     ctl          numeric(6, 1),
+     atl          numeric(6, 1),
+     resting_hr   smallint,
+     hrv          numeric(6, 1),
+     sleep_secs   integer,
+     vo2max       numeric(5, 1),
+     updated_at   timestamptz not null default now()
+   )`,
+
   // Historique des séances. Le nom du programme est recopié : une séance
   // reste lisible même si le programme est renommé ou supprimé ensuite.
   `create table if not exists workout_sessions (

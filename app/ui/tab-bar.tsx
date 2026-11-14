@@ -6,11 +6,9 @@ import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "./icons";
 
 const TABS: { href: string; label: string; icon: IconName }[] = [
-  { href: "/", label: "Accueil", icon: "home" },
+  { href: "/", label: "Aujourd’hui", icon: "home" },
   { href: "/plan", label: "Plan", icon: "calendar" },
-  { href: "/exercices", label: "Exos", icon: "dumbbell" },
-  { href: "/programmes", label: "Séances", icon: "list" },
-  { href: "/suivi", label: "Suivi", icon: "chart" },
+  { href: "/stats", label: "Stats", icon: "chart" },
 ];
 
 /** Menu flottant : l'onglet actif s'élargit en pastille volt avec son libellé. */

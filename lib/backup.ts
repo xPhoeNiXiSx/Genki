@@ -62,7 +62,7 @@ const TABLES: { table: string; columns: Column[] }[] = [
     columns: [
       { name: "id" }, { name: "source" }, { name: "name" }, { name: "sport_type" }, { name: "start_date" },
       { name: "moving_seconds", fallback: 0 }, { name: "elapsed_seconds", fallback: 0 }, { name: "distance_meters", fallback: 0 },
-      { name: "climb_meters", fallback: 0 }, { name: "imported_at" },
+      { name: "climb_meters", fallback: 0 }, { name: "imported_at" }, { name: "avg_hr", fallback: null },
     ],
   },
   {

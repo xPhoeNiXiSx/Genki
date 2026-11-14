@@ -40,3 +40,9 @@ export async function removeFromWatch(sessionId: string): Promise<void> {
   await deleteWorkout(current.eventId);
   await query(`delete from plan_watch where session_id = $1`, [sessionId]);
 }
+
+/** Toutes les séances envoyées à la montre : jour choisi, par séance. */
+export async function listWatchDays(): Promise<Map<string, string>> {
+  const rows = await query<{ session_id: string; day: string }>(`select session_id, to_char(day, 'YYYY-MM-DD') as day from plan_watch`);
+  return new Map(rows.map((r) => [r.session_id, r.day]));
+}

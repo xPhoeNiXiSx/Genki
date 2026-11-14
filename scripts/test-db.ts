@@ -29,10 +29,12 @@ import {
   withAdjustment,
 } from "../lib/plan";
 import { planKindOf, saveActivities } from "../lib/activities";
-import { fromIntervals } from "../lib/intervals";
+import { fromIntervals, syncIntervals } from "../lib/intervals";
 import { planExerciseLinks } from "../lib/plan-exercises";
 import { getWatchEntry, removeFromWatch, sendToWatch } from "../lib/plan-watch";
 import { workoutText } from "../lib/watch";
+import { activeDays, formOf, freshnessText, mondayOf, paceGroups, planTotals, recoveryOf, weeklyVolume } from "../lib/stats";
+import { fromIntervalsWellness, listWellness, saveWellness } from "../lib/wellness";
 import { glossaryFor } from "../lib/plan-glossary";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
@@ -110,8 +112,8 @@ async function main() {
   ok("le schéma est idempotent");
 
   // Une base restée à une version antérieure : il lui manque les derniers ajouts.
-  await query(`drop table plan_watch`);
-  await query(`alter table plan_sessions drop column activity_id`);
+  await query(`drop table wellness`);
+  await query(`alter table activities drop column avg_hr`);
   assert.equal(await isSchemaReady(), false);
   await ensureSchema();
   assert.equal(await isSchemaReady(), true);
@@ -121,6 +123,7 @@ async function main() {
   await workouts();
   await trainingPlan();
   await watchWorkouts();
+  await statsAndWellness();
   await settingsAndBackup();
   pureLogic();
 
@@ -691,6 +694,67 @@ async function watchWorkouts() {
     globalThis.fetch = realFetch;
   }
   ok("une séance part sur la montre, se déplace et se retire");
+}
+
+async function statsAndWellness() {
+  // La fréquence cardiaque arrive avec les sorties, et complète une sortie déjà importée.
+  const run = fromIntervals({ id: "i42", type: "TrailRun", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, distance: 11234.5, average_heartrate: 141.6 })!;
+  assert.equal(run.avgHr, 142);
+  assert.equal((await saveActivities([run])).length, 0);
+  assert.equal((await query<{ avg_hr: number }>(`select avg_hr from activities where id = 'intervals:i42'`))[0].avg_hr, 142);
+  ok("la FC moyenne d'une sortie est importée, y compris pour une sortie déjà connue");
+
+  assert.equal(mondayOf("2026-12-06"), "2026-11-30");
+  assert.equal(mondayOf("2026-11-30"), "2026-11-30");
+  const weeks = await weeklyVolume("2026-12-06", 3);
+  assert.deepEqual(weeks.map((w) => [w.monday, w.label, w.km, w.plannedKm, w.current]), [
+    ["2026-11-16", "16/11", 6.5, 0, false],
+    ["2026-11-23", "23/11", 0, 0, false],
+    ["2026-11-30", "S1", 11.2, PLAN_WEEKS[0].km, true],
+  ]);
+  const paces = await paceGroups("2026-12-06");
+  assert.deepEqual(paces.map((p) => [p.name, p.runs, p.secondsPerKm]), [["Endurance", 1, 415], ["Sortie longue", 1, 443], ["Fractions & côtes", 0, null]]);
+  assert.equal(paces[1].avgHr, 142);
+  assert.equal(paces[1].longestKm, 11.2);
+  const totals = await planTotals();
+  assert.deepEqual([totals.km, totals.climb, totals.total], [11.2, 96, plannedSessions().length]);
+  const active = await activeDays("2026-11-30", "2026-12-06");
+  assert.ok(active.has("2026-12-06") && active.has("2026-12-02") && !active.has("2026-12-01"));
+  ok("les stats rangent les km par semaine face au plan et les allures par type de sortie");
+
+  assert.equal(fromIntervalsWellness({ id: "pas une date" }), null);
+  const day = fromIntervalsWellness({ id: "2026-12-06", ctl: 31.24, atl: 27.9, restingHR: 52.4, hrv: 63.5, sleepSecs: 25800.4, vo2max: 46 })!;
+  assert.deepEqual(day, { day: "2026-12-06", ctl: 31.2, atl: 27.9, restingHr: 52, hrv: 63.5, sleepSecs: 25800, vo2max: 46 });
+  await saveWellness([{ ...day, day: "2026-11-29", ctl: 28, atl: 20, hrv: 60, sleepSecs: 27000, vo2max: null }, day]);
+  await saveWellness([{ ...day, restingHr: 51 }]);
+  const list = await listWellness("2026-11-01", "2026-12-06");
+  assert.equal(list.length, 2);
+  assert.equal(list[1].restingHr, 51);
+  const form = formOf(list)!;
+  assert.deepEqual([form.ctl, form.atl, form.tsb, form.ctlWeekAgo], [31, 28, 3, 28]);
+  assert.equal(freshnessText(form.tsb), "équilibré");
+  assert.deepEqual(recoveryOf(list), { restingHr: 51, hrv: 63.5, hrvAvg: 62, sleepSecs: 26400, vo2max: 46 });
+  assert.equal(formOf([]), null);
+  ok("les données santé de la montre s'enregistrent et donnent la forme et la récup");
+
+  // Synchro : on remonte jusqu'à `since` tant que rien d'aussi ancien n'est
+  // importé ; les données santé suivent.
+  const urls: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    urls.push(url);
+    const body = url.includes("/wellness") ? [{ id: "2026-12-07", ctl: 33, atl: 30, restingHR: 50 }] : [];
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await syncIntervals("2026-10-10", async () => 0);
+    assert.match(urls[0], /\/activities\?oldest=2026-10-10&/);
+    assert.match(urls[1], /\/wellness\?oldest=/);
+    assert.equal((await listWellness("2026-12-07", "2026-12-07"))[0]?.restingHr, 50);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  ok("la synchro rattrape les sorties plus anciennes que le plan et importe les données santé");
 }
 
 main().catch((error) => {

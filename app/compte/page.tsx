@@ -4,7 +4,7 @@ import { getSettings } from "@/lib/settings";
 import { getIntervalsConnection } from "@/lib/intervals";
 
 import { databaseBlocker } from "../db-screens";
-import { Icon } from "../ui/icons";
+import { Icon, type IconName } from "../ui/icons";
 import { Lanes } from "../ui/lanes";
 import { SettingsPanel } from "./settings-panel";
 
@@ -16,6 +16,14 @@ const SYNC_NOTICES: Record<string, string> = {
   deconnecte: "✓ intervals.icu est déconnecté. Les sorties déjà importées restent.",
   erreur: "intervals.icu n'a pas répondu. Réessaie dans un moment.",
 };
+
+/** Les pages d'avant le plan, toujours là mais hors du menu. */
+const TOOLS: { href: string; label: string; detail: string; icon: IconName }[] = [
+  { href: "/exercices", label: "Exercices", detail: "la bibliothèque, avec les fiches du renfo", icon: "dumbbell" },
+  { href: "/programmes", label: "Séances libres", detail: "tes enchaînements chronométrés", icon: "list" },
+  { href: "/suivi", label: "Suivi des séances libres", detail: "l'historique, pour le kiné", icon: "chart" },
+  { href: "/metronome", label: "Métronome", detail: "caler sa cadence", icon: "metronome" },
+];
 
 const LAST_SYNC = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -40,6 +48,22 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <h1 className="display" style={{ fontSize: 34, marginTop: 18 }}>Réglages</h1>
       <p className="subtitle">せってい · à ta façon</p>
       <SettingsPanel initial={settings} migrated={Boolean(migre)} intervals={intervals} />
+
+      <span className="field-label">Outils</span>
+      <div className="settings">
+        {TOOLS.map((t) => (
+          <Link key={t.href} href={t.href} className="setting-row">
+            <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Icon name={t.icon} size={20} />
+              <span style={{ display: "grid", gap: 2 }}>
+                <strong style={{ fontSize: 15 }}>{t.label}</strong>
+                <span className="muted" style={{ fontSize: 12 }}>{t.detail}</span>
+              </span>
+            </span>
+            <Icon name="chevron" size={16} />
+          </Link>
+        ))}
+      </div>
       <p className="mono muted" style={{ textAlign: "center", fontSize: 12, margin: "28px 0 0" }}>genki · v0.2 · 元気</p>
     </main>
   );

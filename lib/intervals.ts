@@ -1,6 +1,7 @@
 import type { Activity } from "@/lib/activities";
 import { saveActivities } from "@/lib/activities";
 import { query } from "@/lib/db";
+import { fromIntervalsWellness, saveWellness, type IntervalsWellness, type WellnessDay } from "@/lib/wellness";
 
 /**
  * intervals.icu : site d'entraînement gratuit, relié directement à Garmin
@@ -92,6 +93,7 @@ export type IntervalsActivity = {
   elapsed_time?: number | null;
   distance?: number | null;
   total_elevation_gain?: number | null;
+  average_heartrate?: number | null;
 };
 
 /**
@@ -112,38 +114,59 @@ export function fromIntervals(a: IntervalsActivity): Activity | null {
     elapsedSeconds: Math.max(0, Math.round(a.elapsed_time ?? 0)),
     distanceMeters: Math.max(0, Math.round(a.distance ?? 0)),
     climbMeters: Math.max(0, Math.round(a.total_elevation_gain ?? 0)),
+    avgHr: typeof a.average_heartrate === "number" && a.average_heartrate > 0 ? Math.round(a.average_heartrate) : null,
   };
 }
 
 export type SyncResult = { imported: number; checked: number };
 
 /**
- * Importe les sorties depuis la dernière synchro (ou depuis `since`), puis
- * les reporte sur le plan.
+ * Importe les sorties depuis la dernière synchro (ou depuis `since` si rien
+ * d'aussi ancien n'a encore été importé), les reporte sur le plan, puis
+ * rafraîchit les données santé des 60 derniers jours.
  */
 export async function syncIntervals(since: string, matchToPlan: (activities: Activity[]) => Promise<number>): Promise<SyncResult> {
-  const rows = await query<{ athlete_id: string | null; access_token: string; last_sync_at: string | Date | null }>(
-    `select athlete_id, access_token, last_sync_at from integrations where provider = 'intervals'`,
+  const rows = await query<{ athlete_id: string | null; access_token: string; last_sync_at: string | Date | null; oldest: string | null }>(
+    `select athlete_id, access_token, last_sync_at,
+            (select to_char(min(start_date at time zone 'Europe/Paris'), 'YYYY-MM-DD') from activities) as oldest
+       from integrations where provider = 'intervals'`,
   );
   const conn = rows[0];
   if (!conn) throw new Error("intervals.icu n'est pas relié.");
+  const headers = { Authorization: authHeader(conn.access_token) };
+  const base = `${API}/athlete/${conn.athlete_id ?? "0"}`;
 
   // Deux jours de marge rattrapent une sortie arrivée en retard de la montre.
-  const last = conn.last_sync_at ? new Date(new Date(conn.last_sync_at).getTime() - 2 * 86_400_000).toISOString().slice(0, 10) : since;
+  // Tant que rien n'est importé avant `since`, on repart de `since`.
+  const covered = conn.oldest !== null && conn.oldest <= addDays(since, 7);
+  const last = conn.last_sync_at && covered ? new Date(new Date(conn.last_sync_at).getTime() - 2 * 86_400_000).toISOString().slice(0, 10) : since;
   const oldest = last > since ? last : since;
   const newest = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
-  const response = await fetch(`${API}/athlete/${conn.athlete_id ?? "0"}/activities?oldest=${oldest}&newest=${newest}`, {
-    headers: { Authorization: authHeader(conn.access_token) },
-    cache: "no-store",
-  });
+  const response = await fetch(`${base}/activities?oldest=${oldest}&newest=${newest}`, { headers, cache: "no-store" });
   if (!response.ok) throw new Error(`intervals.icu ne répond pas (${response.status}).`);
   const list = ((await response.json()) as IntervalsActivity[]).map(fromIntervals).filter((a): a is Activity => a !== null);
 
   const fresh = await saveActivities(list);
   const checked = await matchToPlan(fresh);
+
+  // Les données santé sont un plus : une erreur ici n'empêche pas la synchro.
+  try {
+    const wellness = await fetch(`${base}/wellness?oldest=${addDays(newest, -61)}&newest=${newest}`, { headers, cache: "no-store" });
+    if (wellness.ok) {
+      const days = ((await wellness.json()) as IntervalsWellness[]).map(fromIntervalsWellness).filter((d): d is WellnessDay => d !== null);
+      await saveWellness(days);
+    }
+  } catch {
+    // On réessaiera à la prochaine synchro.
+  }
+
   await query(`update integrations set last_sync_at = now() where provider = 'intervals'`);
   return { imported: fresh.length, checked };
+}
+
+function addDays(iso: string, n: number): string {
+  return new Date(new Date(`${iso}T12:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Clé et athlète enregistrés, ou erreur lisible si intervals.icu n'est pas relié. */

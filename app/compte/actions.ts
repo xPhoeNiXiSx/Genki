@@ -7,8 +7,9 @@ import { isAuthenticated } from "@/lib/auth";
 import { importData, parseBackup } from "@/lib/backup";
 import { runMigrations } from "@/lib/db";
 import { matchActivities } from "@/lib/plan";
-import { PLAN_START } from "@/lib/plan-data";
 import { saveSetting, validSetting, type SettingKey, type Settings } from "@/lib/settings";
+import { parisToday } from "@/lib/dates";
+import { importSince } from "@/lib/sync";
 import { connectIntervals, disconnectIntervals, syncIntervals } from "@/lib/intervals";
 
 async function guard() {
@@ -63,7 +64,7 @@ export async function connectIntervalsAction(_state: IntervalsState, form: FormD
   if ("error" in result) return { error: result.error };
   let target = "/compte?sync=ok";
   try {
-    await syncIntervals(PLAN_START, matchActivities);
+    await syncIntervals(importSince(parisToday()), matchActivities);
   } catch {
     target = "/compte?sync=relie";
   }
@@ -75,7 +76,7 @@ export async function syncIntervalsAction(): Promise<void> {
   await guard();
   let target = "/compte?sync=synchro";
   try {
-    await syncIntervals(PLAN_START, matchActivities);
+    await syncIntervals(importSince(parisToday()), matchActivities);
   } catch {
     target = "/compte?sync=erreur";
   }
