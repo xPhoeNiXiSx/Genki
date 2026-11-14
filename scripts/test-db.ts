@@ -35,6 +35,7 @@ import { getWatchEntry, removeFromWatch, sendToWatch } from "../lib/plan-watch";
 import { workoutText } from "../lib/watch";
 import { activeDays, formOf, freshnessText, mondayOf, paceGroups, planTotals, recoveryOf, weeklyVolume } from "../lib/stats";
 import { fromIntervalsWellness, listWellness, saveWellness } from "../lib/wellness";
+import { bodySignals } from "../lib/plan";
 import { glossaryFor } from "../lib/plan-glossary";
 import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
@@ -554,6 +555,18 @@ async function trainingPlan() {
   assert.equal(decideAdjustment(15, [mk("course", "skipped"), mk("course", "skipped")]).factor, 1);
   ok("le plan s'allège après des sorties manquées ou une semaine dure, s'allonge un peu si tout est facile, jamais avant la course");
 
+  // Ce que dit la montre.
+  assert.equal(decideAdjustment(1, [], { recentKm: 15 }).factor, 0.85);
+  assert.match(decideAdjustment(1, [], { recentKm: 15 }).reason, /≈ 15 km par semaine/);
+  assert.equal(decideAdjustment(1, [], { recentKm: 28 }).factor, 1);
+  assert.equal(decideAdjustment(3, full, { hrvDrop: true }).factor, 0.9);
+  assert.match(decideAdjustment(3, full, { restingRise: true }).reason, /FC au repos en hausse/);
+  assert.equal(decideAdjustment(3, full, { tsb: -15 }).factor, 1);
+  assert.equal(decideAdjustment(3, full, { tsb: -30 }).factor, 0.85);
+  assert.equal(decideAdjustment(3, [mk("course", "skipped"), mk("course", "skipped"), mk("course", "done", 3)], { tsb: -30 }).factor, 0.8);
+  assert.equal(decideAdjustment(15, [], { tsb: -40, recentKm: 5 }).factor, 1);
+  ok("la montre ajuste aussi le plan : volume d'avant le plan, fatigue accumulée, VFC et FC au repos");
+
   const footing = week1.find((x) => x.title === "Footing en endurance")!;
   const lighter = withAdjustment(footing, 0.8);
   assert.equal(lighter.targetSeconds, 35 * 60);
@@ -736,6 +749,15 @@ async function statsAndWellness() {
   assert.deepEqual(recoveryOf(list), { restingHr: 51, hrv: 63.5, hrvAvg: 62, sleepSecs: 26400, vo2max: 46 });
   assert.equal(formOf([]), null);
   ok("les données santé de la montre s'enregistrent et donnent la forme et la récup");
+
+  const signals = await bodySignals(1, "2026-12-10");
+  assert.equal(signals.recentKm, 6.5 / 4);
+  assert.equal(signals.tsb, 8);
+  assert.deepEqual([signals.hrvDrop, signals.restingRise], [false, false]);
+  // Avant le plan, seuls les jours passés comptent.
+  assert.equal((await bodySignals(1, "2026-11-21")).recentKm, 6.5 / 4);
+  assert.equal((await bodySignals(1, "2026-11-19")).recentKm, null);
+  ok("les signaux de la montre se lisent avant chaque semaine du plan");
 
   // Synchro : on remonte jusqu'à `since` tant que rien d'aussi ancien n'est
   // importé ; les données santé suivent.

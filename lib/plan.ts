@@ -1,6 +1,9 @@
 import { query } from "@/lib/db";
 import { PLAN_START, PLAN_WEEKS, plannedSessions, type PlanBlock, type PlanKind, type PlanWeek } from "@/lib/plan-data";
-import { planKindOf, type Activity } from "@/lib/activities";
+import { RUN_TYPES, planKindOf, type Activity } from "@/lib/activities";
+import { parisToday } from "@/lib/dates";
+import { addDays, formOf } from "@/lib/stats";
+import { listWellness } from "@/lib/wellness";
 
 export type PlanStatus = "todo" | "done" | "skipped";
 
@@ -265,46 +268,118 @@ export async function matchActivities(activities: Activity[]): Promise<number> {
 export type Adjustment = { week: number; factor: number; reason: string };
 
 /**
- * Décide l'ajustement d'une semaine d'après la précédente : séances
- * manquées, ressenti moyen, kilomètres réellement courus. Seuls le footing
- * et la sortie longue changent de durée ; les séances de qualité, le semi et
- * la course ne bougent pas.
+ * Ce que la montre dit avant une semaine : volume couru les 4 semaines
+ * d'avant, fraîcheur (forme − fatigue d'intervals.icu), et récup (VFC qui
+ * baisse, FC au repos qui monte, sur 7 jours face aux 4 semaines d'avant).
  */
-export function decideAdjustment(week: number, previous: PlanSession[]): Adjustment {
-  const info = PLAN_WEEKS[week - 1];
-  if (week === 1 || previous.length === 0) return { week, factor: 1, reason: "Première semaine : plan tel quel." };
-  if (week >= PLAN_WEEKS.length - 1) return { week, factor: 1, reason: "Dernières semaines : le plan ne bouge plus." };
+export type BodySignals = { recentKm: number | null; tsb: number | null; hrvDrop: boolean; restingRise: boolean };
 
-  const done = previous.filter((s) => s.status === "done");
-  // Seules les sorties comptent comme manquées : un renfo fait sans être
-  // noté ne doit pas alléger la semaine suivante.
-  const runs = previous.filter((s) => s.kind === "course");
-  const missed = runs.filter((s) => s.status !== "done").length;
-  const feelings = done.map((s) => s.feeling).filter((f): f is number => f !== null);
-  const feeling = feelings.length ? feelings.reduce((a, b) => a + b, 0) / feelings.length : null;
-  const measured = done.filter((s) => s.kind === "course" && s.targetMeters && s.actualMeters);
-  const ratio = measured.length ? measured.reduce((a, s) => a + (s.actualMeters ?? 0), 0) / measured.reduce((a, s) => a + (s.targetMeters ?? 0), 0) : null;
+const NO_SIGNALS: BodySignals = { recentKm: null, tsb: null, hrvDrop: false, restingRise: false };
+
+/**
+ * Décide l'ajustement d'une semaine d'après la précédente : séances
+ * manquées, ressenti moyen, kilomètres réellement courus, puis ce que dit
+ * la montre (fatigue, récup). La première semaine part du volume couru
+ * juste avant le plan. Seuls le footing et la sortie longue changent de
+ * durée ; les séances de qualité, le semi et la course ne bougent pas.
+ */
+export function decideAdjustment(week: number, previous: PlanSession[], signals: Partial<BodySignals> = {}): Adjustment {
+  const info = PLAN_WEEKS[week - 1];
+  const body = { ...NO_SIGNALS, ...signals };
+  if (week >= PLAN_WEEKS.length - 1) return { week, factor: 1, reason: "Dernières semaines : le plan ne bouge plus." };
 
   let factor = 1;
   let reason = "Semaine conforme : plan inchangé.";
-  if (missed >= 2) {
-    factor = 0.8;
-    reason = `${missed} sorties manquées la semaine dernière : on reprend en douceur, sans rattraper.`;
-  } else if (feeling !== null && feeling <= 2 && feelings.length >= 2) {
-    factor = 0.85;
-    reason = "Semaine dernière ressentie comme dure : on allège footing et sortie longue.";
-  } else if (missed === 1) {
-    reason = "Une sortie manquée la semaine dernière : on ne la rattrape pas, on continue.";
-  } else if (missed === 0 && feeling !== null && feeling >= 4.5 && feelings.length >= 3 && (ratio === null || ratio >= 0.95)) {
-    factor = 1.05;
-    reason = "Tout est passé facilement : footing et sortie longue un peu allongés.";
+  if (week === 1 || previous.length === 0) {
+    const recent = body.recentKm === null ? null : Math.round(body.recentKm);
+    if (recent !== null && body.recentKm! < 0.7 * info.km) {
+      factor = 0.85;
+      reason = `Tu cours ≈ ${recent} km par semaine ces 4 dernières semaines : on démarre un peu plus court.`;
+    } else {
+      reason = recent !== null ? `≈ ${recent} km par semaine ces 4 dernières semaines : le plan démarre tel quel.` : "Première semaine : plan tel quel.";
+    }
+  } else {
+    const done = previous.filter((s) => s.status === "done");
+    // Seules les sorties comptent comme manquées : un renfo fait sans être
+    // noté ne doit pas alléger la semaine suivante.
+    const runs = previous.filter((s) => s.kind === "course");
+    const missed = runs.filter((s) => s.status !== "done").length;
+    const feelings = done.map((s) => s.feeling).filter((f): f is number => f !== null);
+    const feeling = feelings.length ? feelings.reduce((a, b) => a + b, 0) / feelings.length : null;
+    const measured = done.filter((s) => s.kind === "course" && s.targetMeters && s.actualMeters);
+    const ratio = measured.length ? measured.reduce((a, s) => a + (s.actualMeters ?? 0), 0) / measured.reduce((a, s) => a + (s.targetMeters ?? 0), 0) : null;
+
+    if (missed >= 2) {
+      factor = 0.8;
+      reason = `${missed} sorties manquées la semaine dernière : on reprend en douceur, sans rattraper.`;
+    } else if (feeling !== null && feeling <= 2 && feelings.length >= 2) {
+      factor = 0.85;
+      reason = "Semaine dernière ressentie comme dure : on allège footing et sortie longue.";
+    } else if (missed === 1) {
+      reason = "Une sortie manquée la semaine dernière : on ne la rattrape pas, on continue.";
+    } else if (missed === 0 && feeling !== null && feeling >= 4.5 && feelings.length >= 3 && (ratio === null || ratio >= 0.95)) {
+      factor = 1.05;
+      reason = "Tout est passé facilement : footing et sortie longue un peu allongés.";
+    }
   }
+
+  // La montre a le dernier mot quand elle voit de la fatigue.
+  const recoveryDown = body.hrvDrop || body.restingRise;
+  if (factor > 1 && (recoveryDown || (body.tsb !== null && body.tsb < -10))) {
+    factor = 1;
+    reason = "Tout est passé facilement, mais la montre voit de la fatigue : on garde le plan tel quel.";
+  }
+  if (body.tsb !== null && body.tsb < -25 && factor > 0.85) {
+    factor = 0.85;
+    reason = `Fatigue accumulée (fraîcheur ${body.tsb}) : on allège footing et sortie longue.`;
+  } else if (recoveryDown && factor > 0.9) {
+    factor = 0.9;
+    const what = [body.hrvDrop ? "VFC en baisse" : null, body.restingRise ? "FC au repos en hausse" : null].filter(Boolean).join(", ");
+    reason = `Récup en baisse sur la montre (${what}) : footing et sortie longue un peu raccourcis.`;
+  }
+
   // Une semaine allégée le reste : on ne l'alourdit jamais.
   if (info.light && factor > 1) {
     factor = 1;
     reason = "Semaine allégée : elle le reste, même si tout va bien.";
   }
   return { week, factor, reason };
+}
+
+/** Lit, dans les sorties et les données santé importées, ce que dit la montre avant une semaine du plan. */
+export async function bodySignals(week: number, today = parisToday()): Promise<BodySignals> {
+  // Avant la semaine, on regarde les jours déjà passés : des jours à venir
+  // feraient baisser les moyennes à tort.
+  const tomorrow = addDays(today, 1);
+  const monday = PLAN_WEEKS[week - 1].monday < tomorrow ? PLAN_WEEKS[week - 1].monday : tomorrow;
+  const [runs, wellness] = await Promise.all([
+    query<{ meters: string | number | null; count: string | number }>(
+      `select sum(distance_meters) as meters, count(*) as count from activities
+        where sport_type = any($1::text[]) and (start_date at time zone 'Europe/Paris')::date between $2 and $3`,
+      [[...RUN_TYPES], addDays(monday, -28), addDays(monday, -1)],
+    ),
+    listWellness(addDays(monday, -35), addDays(monday, -1)),
+  ]);
+  const count = Number(runs[0]?.count ?? 0);
+  const form = formOf(wellness);
+  const lastWeek = wellness.filter((d) => d.day >= addDays(monday, -7));
+  const before = wellness.filter((d) => d.day < addDays(monday, -7));
+  const avg = (list: (number | null)[]) => {
+    const values = list.filter((v): v is number => v !== null);
+    return values.length ? { mean: values.reduce((a, b) => a + b, 0) / values.length, n: values.length } : null;
+  };
+  const hrvNow = avg(lastWeek.map((d) => d.hrv));
+  const hrvBase = avg(before.map((d) => d.hrv));
+  const restNow = avg(lastWeek.map((d) => d.restingHr));
+  const restBase = avg(before.map((d) => d.restingHr));
+  const enough = (now: { n: number } | null, base: { n: number } | null) => now !== null && base !== null && now.n >= 4 && base.n >= 7;
+  return {
+    recentKm: count > 0 ? Number(runs[0].meters ?? 0) / 1000 / 4 : null,
+    // Une fraîcheur de plus de 3 jours ne dit plus rien de la semaine.
+    tsb: form && form.day >= addDays(monday, -3) ? form.tsb : null,
+    hrvDrop: enough(hrvNow, hrvBase) && hrvNow!.mean < 0.9 * hrvBase!.mean,
+    restingRise: enough(restNow, restBase) && restNow!.mean >= restBase!.mean + 5,
+  };
 }
 
 export async function listAdjustments(): Promise<Map<number, Adjustment>> {
@@ -321,7 +396,7 @@ export async function ensureAdjustment(week: number, sessions: PlanSession[]): P
   const known = (await listAdjustments()).get(week);
   const started = sessions.some((s) => s.week === week && s.status === "done");
   if (known && started) return known;
-  const decided = decideAdjustment(week, sessions.filter((s) => s.week === week - 1));
+  const decided = decideAdjustment(week, sessions.filter((s) => s.week === week - 1), await bodySignals(week).catch(() => NO_SIGNALS));
   if (known && known.factor === decided.factor && known.reason === decided.reason) return known;
   await query(
     `insert into plan_adjustments (week, factor, reason) values ($1, $2, $3)

@@ -61,3 +61,40 @@ export async function saveActivities(list: Activity[]): Promise<Activity[]> {
   const fresh = new Set(rows.filter((r) => r.inserted).map((r) => r.id));
   return list.filter((a) => fresh.has(a.id));
 }
+
+export type ActivityRow = {
+  id: string;
+  name: string;
+  sportType: string;
+  /** Jour local (Paris), « AAAA-MM-JJ ». */
+  day: string;
+  movingSeconds: number;
+  distanceMeters: number;
+  climbMeters: number;
+  avgHr: number | null;
+  /** Titre de la séance du plan que la sortie a cochée. */
+  planTitle: string | null;
+};
+
+/** Les activités importées depuis une date, les plus récentes d'abord. */
+export async function listActivities(since: string): Promise<ActivityRow[]> {
+  const rows = await query<{ id: string; name: string; sport_type: string; day: string; moving_seconds: number; distance_meters: number; climb_meters: number; avg_hr: number | null; plan_title: string | null }>(
+    `select a.id, a.name, a.sport_type, to_char((a.start_date at time zone 'Europe/Paris')::date, 'YYYY-MM-DD') as day,
+            a.moving_seconds, a.distance_meters, a.climb_meters, a.avg_hr, p.title as plan_title
+       from activities a left join plan_sessions p on p.activity_id = a.id
+      where (a.start_date at time zone 'Europe/Paris')::date >= $1
+      order by a.start_date desc`,
+    [since],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    sportType: r.sport_type,
+    day: r.day,
+    movingSeconds: r.moving_seconds,
+    distanceMeters: r.distance_meters,
+    climbMeters: r.climb_meters,
+    avgHr: r.avg_hr,
+    planTitle: r.plan_title,
+  }));
+}

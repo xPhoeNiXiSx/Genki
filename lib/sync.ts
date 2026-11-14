@@ -3,9 +3,11 @@ import { matchActivities } from "@/lib/plan";
 import { PLAN_START } from "@/lib/plan-data";
 import { addDays } from "@/lib/stats";
 
-/** Les stats remontent 8 semaines : on importe au moins depuis là. */
+/** La page Sorties remonte jusqu'à 26 semaines : on importe au moins depuis là. */
+export const IMPORTED_WEEKS = 26;
+
 export function importSince(today: string): string {
-  const back = addDays(today, -7 * 8);
+  const back = addDays(today, -7 * IMPORTED_WEEKS);
   return back < PLAN_START ? back : PLAN_START;
 }
 
