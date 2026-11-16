@@ -265,3 +265,26 @@ function formatMinutes(total: number): string {
   const m = total % 60;
   return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
 }
+
+export type CircuitItem = { label: string; perRound: string; note: string };
+
+/** Récup entre deux tours du circuit de renfo. */
+export const CIRCUIT_REST = "1 min 30";
+
+/**
+ * Lit un renfo comme un circuit : « 3 × 15, descente lente » devient
+ * 15 par tour (descente lente), et le nombre de tours est le plus fréquent
+ * des « N × ». Renvoie null si un bloc ne suit pas ce format.
+ */
+export function renfoCircuit(blocks: PlanBlock[]): { rounds: number; items: CircuitItem[] } | null {
+  const parsed = blocks.map((b) => {
+    const m = b.detail.match(/^(\d+)\s*×\s*(\d+(?:\s*s\b)?)\s*,?\s*(.*)$/);
+    const note = m?.[3].trim() === "chaque" ? "face, puis chaque côté" : (m?.[3].trim() ?? "");
+    return m ? { label: b.label, rounds: Number(m[1]), perRound: m[2].replace(/\s+/g, " "), note } : null;
+  });
+  if (parsed.length === 0 || parsed.some((p) => p === null)) return null;
+  const counts = new Map<number, number>();
+  for (const p of parsed) counts.set(p!.rounds, (counts.get(p!.rounds) ?? 0) + 1);
+  const rounds = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+  return { rounds, items: parsed.map((p) => ({ label: p!.label, perRound: p!.perRound, note: p!.note })) };
+}

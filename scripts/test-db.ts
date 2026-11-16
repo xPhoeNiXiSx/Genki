@@ -37,7 +37,7 @@ import { activeDays, formOf, freshnessText, mondayOf, paceGroups, planTotals, re
 import { fromIntervalsWellness, listWellness, saveWellness } from "../lib/wellness";
 import { bodySignals } from "../lib/plan";
 import { glossaryFor } from "../lib/plan-glossary";
-import { PLAN_WEEKS, plannedSessions } from "../lib/plan-data";
+import { PLAN_WEEKS, plannedSessions, renfoCircuit } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
   MAX_FAILURES,
@@ -508,6 +508,18 @@ async function trainingPlan() {
   assert.equal(again2.get("Squats")?.id, links.get("Squats")?.id);
   assert.match((await getExercise(links.get("Squat bulgare")!.id))?.description ?? "", /pied arrière/);
   ok("chaque exercice de renfo a sa fiche dans la bibliothèque, créée une seule fois");
+
+  for (const renfo of planned.filter((x) => x.kind === "renfo")) {
+    const circuit = renfoCircuit(renfo.blocks);
+    assert.ok(circuit, `renfo illisible en circuit : ${renfo.title}`);
+    assert.equal(circuit.rounds, 3);
+    assert.equal(circuit.items.length, renfo.blocks.length);
+  }
+  const circuitA = renfoCircuit(planned.find((x) => x.kind === "renfo")!.blocks)!;
+  assert.deepEqual(circuitA.items[1], { label: "Fentes avant", perRound: "10", note: "par jambe" });
+  assert.deepEqual(circuitA.items[4], { label: "Gainage face + côtés", perRound: "40 s", note: "face, puis chaque côté" });
+  assert.equal(renfoCircuit([{ label: "Libre", detail: "comme tu veux", duration: "5′" }]), null);
+  ok("chaque renfo se lit comme un bloc à faire en 3 tours, avec ce qu'il faut faire par tour");
 
   // intervals.icu : une activité se traduit, se range par type, ne s'importe qu'une fois.
   const run = fromIntervals({ id: "i42", name: "Sortie du dimanche", type: "TrailRun", source: "GARMIN_CONNECT", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 })!;

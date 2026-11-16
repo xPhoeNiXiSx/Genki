@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { bestView } from "@/lib/anatomy";
 import { parisToday } from "@/lib/dates";
 import { getIntervalsConnection } from "@/lib/intervals";
-import { PLAN_WEEKS } from "@/lib/plan-data";
+import { CIRCUIT_REST, PLAN_WEEKS, renfoCircuit } from "@/lib/plan-data";
 import { getWatchEntry } from "@/lib/plan-watch";
 import { planExerciseLinks, type PlanExerciseLink } from "@/lib/plan-exercises";
 import { glossaryFor } from "@/lib/plan-glossary";
@@ -58,6 +58,7 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   const links = session.kind === "renfo" ? await planExerciseLinks() : new Map<string, PlanExerciseLink>();
   const glossary = glossaryFor([session.title, session.summary, ...session.blocks.flatMap((b) => [b.label, b.detail])]);
   const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
+  const circuit = session.kind === "renfo" ? renfoCircuit(session.blocks) : null;
   const watchable = session.kind === "course" && session.status === "todo";
   const [watch, intervals] = watchable ? await Promise.all([getWatchEntry(session.id), getIntervalsConnection()]) : [null, null];
 
@@ -109,38 +110,93 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
         </div>
       ) : null}
 
-      <span className="field-label">{session.kind === "course" ? "Déroulé" : "Exercices"}</span>
-      <div style={{ display: "grid", gap: 8 }}>
-        {session.blocks.map((b, i) => {
-          const link = links.get(b.label);
-          if (link) {
-            return (
-              <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 16px 6px 12px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
-                <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{b.label}</span>
-                  <span className="muted" style={{ fontSize: 12 }}>{b.detail}</span>
-                </span>
-                <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
-                <Icon name="chevron" size={16} />
-              </Link>
-            );
-          }
-          return (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
-            <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: i === 0 ? "var(--volt)" : "var(--ink)", color: i === 0 ? "var(--ink)" : "var(--volt)", border: i === 0 ? "1.5px solid var(--ink)" : 0, display: "grid", placeItems: "center", fontSize: 11 }}>
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{b.label}</span>
-              <span className="muted" style={{ fontSize: 12 }}>{b.detail}</span>
-            </span>
-            <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
+      {circuit ? (
+        <>
+          <div style={{ marginTop: 20, padding: "16px 18px", borderRadius: 22, background: "var(--volt)", border: "1.5px solid var(--ink)", display: "grid", gap: 10 }}>
+            <span className="label" style={{ fontSize: 10 }}>Comment faire</span>
+            <span className="display" style={{ fontSize: 20, lineHeight: 1.15 }}>{circuit.rounds} tours du bloc complet</span>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
+              <li>Fais les {circuit.items.length} exercices à la suite, juste le temps de changer entre deux.</li>
+              <li>Récupère <strong>{CIRCUIT_REST}</strong>.</li>
+              <li>Recommence le bloc : {circuit.rounds} tours en tout.</li>
+            </ol>
           </div>
-          );
-        })}
-      </div>
-      {links.size > 0 ? <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Touche un exercice pour voir comment le faire.</p> : null}
+
+          <span className="field-label">Le bloc</span>
+          <section aria-label={`Bloc d'exercices à faire ${circuit.rounds} fois`} style={{ border: "1.5px solid var(--ink)", borderRadius: 26, padding: "10px 8px 8px", display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
+              <span className="label">Boucle · {circuit.rounds} tours</span>
+              <span className="chip on" style={{ height: 28, fontSize: 13 }}>×{circuit.rounds}</span>
+            </div>
+            {circuit.items.map((item, i) => {
+              const link = links.get(item.label);
+              const content = (
+                <>
+                  {link ? (
+                    <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
+                  ) : (
+                    <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: "var(--ink)", color: "var(--volt)", display: "grid", placeItems: "center", fontSize: 11 }}>{String(i + 1).padStart(2, "0")}</span>
+                  )}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{item.label}</span>
+                    {item.note ? <span className="muted" style={{ fontSize: 12 }}>{item.note}</span> : null}
+                  </span>
+                  <span style={{ flex: "none", display: "grid", justifyItems: "end" }}>
+                    <span className="display" style={{ fontSize: 18, lineHeight: 1, whiteSpace: "nowrap" }}>{item.perRound}</span>
+                    <span className="mono muted" style={{ fontSize: 10 }}>par tour</span>
+                  </span>
+                  {link ? <Icon name="chevron" size={16} /> : null}
+                </>
+              );
+              const style = { display: "flex", alignItems: "center", gap: 12, padding: link ? "6px 14px 6px 10px" : "12px 14px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" } as const;
+              return link ? (
+                <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={style}>{content}</Link>
+              ) : (
+                <div key={i} style={style}>{content}</div>
+              );
+            })}
+            <div className="mono" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 10, borderRadius: 18, border: "1.5px dashed rgba(26,26,29,.45)", fontSize: 12, textAlign: "center" }}>
+              ↻ récup {CIRCUIT_REST} · puis on reprend au 1er exercice
+            </div>
+          </section>
+          {links.size > 0 ? <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Touche un exercice pour voir comment le faire.</p> : null}
+        </>
+      ) : (
+        <>
+        <span className="field-label">{session.kind === "course" ? "Déroulé" : "Exercices"}</span>
+        <div style={{ display: "grid", gap: 8 }}>
+          {session.blocks.map((b, i) => {
+            const link = links.get(b.label);
+            if (link) {
+              return (
+                <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 16px 6px 12px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
+                  <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{b.label}</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{b.detail}</span>
+                  </span>
+                  <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
+                  <Icon name="chevron" size={16} />
+                </Link>
+              );
+            }
+            return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" }}>
+              <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: i === 0 ? "var(--volt)" : "var(--ink)", color: i === 0 ? "var(--ink)" : "var(--volt)", border: i === 0 ? "1.5px solid var(--ink)" : 0, display: "grid", placeItems: "center", fontSize: 11 }}>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{b.label}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{b.detail}</span>
+              </span>
+              <span className="mono" style={{ fontSize: 14, flex: "none" }}>{b.duration}</span>
+            </div>
+            );
+          })}
+        </div>
+        {links.size > 0 ? <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Touche un exercice pour voir comment le faire.</p> : null}
+        </>
+      )}
 
       <div className="galet ink" style={{ marginTop: 14, borderRadius: 22, padding: "14px 18px", fontSize: 13, lineHeight: 1.45 }}>
         <strong style={{ color: "var(--volt)" }}>Pourquoi</strong> — {session.why}
