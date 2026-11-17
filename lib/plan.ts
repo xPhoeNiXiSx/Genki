@@ -1,5 +1,5 @@
 import { query } from "@/lib/db";
-import { PLAN_START, PLAN_WEEKS, plannedSessions, type PlanBlock, type PlanKind, type PlanWeek } from "@/lib/plan-data";
+import { PLAN_START, PLAN_WEEKS, RENFO_LEVELS, plannedSessions, type PlanBlock, type PlanKind, type PlanWeek } from "@/lib/plan-data";
 import { RUN_TYPES, planKindOf, type Activity } from "@/lib/activities";
 import { parisToday } from "@/lib/dates";
 import { addDays, formOf } from "@/lib/stats";
@@ -85,28 +85,39 @@ function fromRow(row: Row): PlanSession {
  */
 export async function ensurePlan(): Promise<void> {
   const sessions = plannedSessions();
+  const payload = [
+    JSON.stringify(
+      sessions.map((s) => ({
+        week: s.week,
+        position: s.position,
+        kind: s.kind,
+        title: s.title,
+        summary: s.summary,
+        why: s.why,
+        blocks: s.blocks,
+        target_seconds: s.targetSeconds,
+        target_meters: s.targetMeters,
+        target_climb: s.targetClimb,
+      })),
+    ),
+  ];
   await query(
     `insert into plan_sessions (week, position, kind, title, summary, why, blocks, target_seconds, target_meters, target_climb)
      select s.week, s.position, s.kind, s.title, s.summary, s.why, s.blocks, s.target_seconds, s.target_meters, s.target_climb
        from json_to_recordset($1::json) as s(week smallint, position smallint, kind text, title text, summary text, why text,
             blocks jsonb, target_seconds integer, target_meters integer, target_climb integer)
      on conflict (week, position) do nothing`,
-    [
-      JSON.stringify(
-        sessions.map((s) => ({
-          week: s.week,
-          position: s.position,
-          kind: s.kind,
-          title: s.title,
-          summary: s.summary,
-          why: s.why,
-          blocks: s.blocks,
-          target_seconds: s.targetSeconds,
-          target_meters: s.targetMeters,
-          target_climb: s.targetClimb,
-        })),
-      ),
-    ],
+    payload,
+  );
+  // Un renfo pas encore fait suit le contenu actuel du plan (routine tibias
+  // ajoutée en cours de route…). Les séances faites gardent leur historique.
+  await query(
+    `update plan_sessions p
+        set blocks = s.blocks, summary = s.summary, target_seconds = s.target_seconds
+       from json_to_recordset($1::json) as s(week smallint, position smallint, kind text, summary text, blocks jsonb, target_seconds integer)
+      where p.week = s.week and p.position = s.position and p.kind = 'renfo' and s.kind = 'renfo'
+        and p.status <> 'done' and (p.blocks <> s.blocks or p.summary <> s.summary or p.target_seconds <> s.target_seconds)`,
+    payload,
   );
 }
 
@@ -404,6 +415,33 @@ export async function ensureAdjustment(week: number, sessions: PlanSession[]): P
     [decided.week, decided.factor, decided.reason],
   );
   return decided;
+}
+
+export type RenfoLevel = { level: number; reason: string | null };
+
+/**
+ * Niveau du prochain renfo, rejoué depuis les renfos faits, dans l'ordre :
+ * un renfo ressenti « bien » ou « facile » (4-5) fait monter d'un cran, un
+ * renfo « dur » ou « très dur » (1-2) fait redescendre.
+ */
+export function renfoLevel(sessions: PlanSession[]): RenfoLevel {
+  const done = sessions
+    .filter((s) => s.kind === "renfo" && s.status === "done" && s.feeling !== null)
+    .sort((a, b) => (a.doneAt?.getTime() ?? 0) - (b.doneAt?.getTime() ?? 0));
+  let level = 1;
+  let reason: string | null = null;
+  for (const s of done) {
+    if (s.feeling! >= 4 && level < RENFO_LEVELS) {
+      level += 1;
+      reason = "Le dernier renfo est passé facilement : un cran au-dessus.";
+    } else if (s.feeling! <= 2 && level > 1) {
+      level -= 1;
+      reason = "Le dernier renfo était dur : un cran en dessous.";
+    } else if (s.feeling! >= 4) {
+      reason = "Niveau maximum : pour corser encore, un sac à dos chargé (3-5 kg) sur squats, fentes et montées.";
+    }
+  }
+  return { level, reason };
 }
 
 const ADJUSTABLE = new Set(["Footing en endurance", "Sortie longue"]);

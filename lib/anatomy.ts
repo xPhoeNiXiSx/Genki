@@ -61,10 +61,14 @@ export const FRONT: Partial<Record<MuscleKey, string[]>> = {
   adducteurs: [
     "M86 223 C92 221 96 219 99 217 L99 226 C96 246 92 262 88 274 C86 258 86 240 86 223 Z",
   ],
-  mollets: [
+  // De face, le bas de jambe montre surtout le jambier antérieur (le long
+  // du tibia) ; le mollet n'apparaît qu'à l'intérieur.
+  tibias: [
     "M66 322 C62 340 63 360 68 380 L70 380 C67 360 67 340 68 322 Z",
     "M68 320 C66 344 68 368 72 390 L77 390 C76 366 75 342 74 320 Z",
     "M74 320 L80 320 C81 340 81 362 80 390 L77 390 C76 366 75 342 74 320 Z",
+  ],
+  mollets: [
     "M80 320 C90 330 92 352 88 370 C86 378 82 378 80 372 C81 356 81 338 80 320 Z",
   ],
 };

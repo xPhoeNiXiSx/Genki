@@ -28,7 +28,13 @@ export type Phase = (typeof PHASES)[number];
 
 export type PlanKind = "course" | "renfo";
 
-export type PlanBlock = { label: string; detail: string; duration: string };
+export type PlanBlock = {
+  label: string;
+  detail: string;
+  duration: string;
+  /** Bloc à part dans un renfo : « tibias » = routine anti-périostite, après le bloc principal. */
+  group?: "tibias";
+};
 
 export type PlannedSession = {
   week: number;
@@ -127,12 +133,24 @@ const RENFO_B: PlanBlock[] = [
   { label: "Gainage dynamique", detail: "3 × 30 s de mountain climbers", duration: "4′" },
 ];
 
+/**
+ * Routine anti-périostite, à la fin de chaque renfo : le jambier antérieur
+ * et le soléaire amortissent l'impact qui irrite le tibia, la hanche garde
+ * le genou et le pied dans l'axe.
+ */
+const TIBIAS: PlanBlock[] = [
+  { label: "Relevés de pointes", detail: "2 × 20, dos au mur, talons au sol", duration: "2′", group: "tibias" },
+  { label: "Mollets genoux fléchis", detail: "2 × 15 par jambe, sur une marche", duration: "2′", group: "tibias" },
+  { label: "Marche talons puis pointes", detail: "2 × 30 s chaque", duration: "2′", group: "tibias" },
+  { label: "Abduction de hanche couché", detail: "2 × 15 par jambe", duration: "2′", group: "tibias" },
+];
+
 /** Au fil des phases, le renfo B gagne des petits sauts (pliométrie). */
 function renfoB(phase: Phase): PlanBlock[] {
   if (phase === "Spécifique") {
-    return [...RENFO_B.slice(0, 4), { label: "Sauts légers", detail: "3 × 20 petits sauts pieds joints, réception souple", duration: "5′" }, RENFO_B[5]];
+    return [...RENFO_B.slice(0, 4), { label: "Sauts légers", detail: "3 × 20 petits sauts pieds joints, réception souple", duration: "5′" }, RENFO_B[5], ...TIBIAS];
   }
-  return RENFO_B;
+  return [...RENFO_B, ...TIBIAS];
 }
 
 function addDays(iso: string, days: number): string {
@@ -158,7 +176,8 @@ export function plannedSessions(): PlannedSession[] {
     const week = i + 1;
     const q = QUALITY[i];
     const last = week === WEEKS.length;
-    const renfoMinutes = w.phase === "Fondation" ? 30 : w.phase === "Affûtage" ? 25 : 35;
+    // Renfo : bloc principal + 8 min de routine tibias.
+    const renfoMinutes = w.phase === "Fondation" ? 38 : w.phase === "Affûtage" ? 33 : 43;
     const list: Omit<PlannedSession, "week" | "position">[] = [];
 
     list.push({
@@ -175,9 +194,9 @@ export function plannedSessions(): PlannedSession[] {
     list.push({
       kind: "renfo",
       title: "Renfo A · force & gainage",
-      summary: `${renfoMinutes} min · 6 exercices`,
+      summary: `${renfoMinutes} min · 6 exercices + tibias`,
       why: "Des jambes et un tronc solides tiennent la foulée jusqu'au bout des 45 km.",
-      blocks: RENFO_A,
+      blocks: [...RENFO_A, ...TIBIAS],
       targetSeconds: minutes(renfoMinutes),
       targetMeters: null,
       targetClimb: null,
@@ -198,7 +217,7 @@ export function plannedSessions(): PlannedSession[] {
       list.push({
         kind: "renfo",
         title: "Renfo B · excentrique & proprio",
-        summary: `${renfoMinutes} min · descentes, chevilles`,
+        summary: `${renfoMinutes} min · descentes, chevilles, tibias`,
         why: "Peu de dénivelé autour de toi : c'est ici que les cuisses apprennent à encaisser les descentes.",
         blocks: renfoB(w.phase),
         targetSeconds: minutes(renfoMinutes),
@@ -267,24 +286,52 @@ function formatMinutes(total: number): string {
 }
 
 export type CircuitItem = { label: string; perRound: string; note: string };
+export type Circuit = { title: string; rounds: number; rest: string; items: CircuitItem[] };
 
 /** Récup entre deux tours du circuit de renfo. */
 export const CIRCUIT_REST = "1 min 30";
 
+/** Niveau de renfo : 1 = le plan tel quel, 2 et 3 = plus de répétitions, puis un 4e tour. */
+export const RENFO_LEVELS = 3;
+
+/** « 15 » → « 20 », « 40 s » → « 50 s » au niveau 2 et plus. */
+function harder(perRound: string, level: number): string {
+  if (level < 2) return perRound;
+  const seconds = perRound.match(/^(\d+) s$/);
+  if (seconds) return `${Number(seconds[1]) + 10} s`;
+  const reps = Number(perRound);
+  return Number.isFinite(reps) ? String(Math.round(reps * 1.3)) : perRound;
+}
+
 /**
- * Lit un renfo comme un circuit : « 3 × 15, descente lente » devient
+ * Lit un renfo comme des circuits : « 3 × 15, descente lente » devient
  * 15 par tour (descente lente), et le nombre de tours est le plus fréquent
- * des « N × ». Renvoie null si un bloc ne suit pas ce format.
+ * des « N × ». Le bloc principal d'abord, puis la routine tibias. Le niveau
+ * durcit le bloc principal seulement : la routine tibias reste douce.
+ * Renvoie null si un bloc ne suit pas ce format.
  */
-export function renfoCircuit(blocks: PlanBlock[]): { rounds: number; items: CircuitItem[] } | null {
+export function renfoCircuits(blocks: PlanBlock[], level = 1): Circuit[] | null {
   const parsed = blocks.map((b) => {
     const m = b.detail.match(/^(\d+)\s*×\s*(\d+(?:\s*s\b)?)\s*,?\s*(.*)$/);
-    const note = m?.[3].trim() === "chaque" ? "face, puis chaque côté" : (m?.[3].trim() ?? "");
-    return m ? { label: b.label, rounds: Number(m[1]), perRound: m[2].replace(/\s+/g, " "), note } : null;
+    if (!m) return null;
+    const note = m[3].trim() === "chaque" ? (b.group === "tibias" ? "talons, puis pointes" : "face, puis chaque côté") : m[3].trim();
+    return { group: b.group ?? "main", label: b.label, rounds: Number(m[1]), perRound: m[2].replace(/\s+/g, " "), note };
   });
   if (parsed.length === 0 || parsed.some((p) => p === null)) return null;
-  const counts = new Map<number, number>();
-  for (const p of parsed) counts.set(p!.rounds, (counts.get(p!.rounds) ?? 0) + 1);
-  const rounds = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
-  return { rounds, items: parsed.map((p) => ({ label: p!.label, perRound: p!.perRound, note: p!.note })) };
+  const circuits: Circuit[] = [];
+  for (const group of ["main", "tibias"] as const) {
+    const list = parsed.filter((p) => p!.group === group);
+    if (list.length === 0) continue;
+    const counts = new Map<number, number>();
+    for (const p of list) counts.set(p!.rounds, (counts.get(p!.rounds) ?? 0) + 1);
+    const base = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+    const main = group === "main";
+    circuits.push({
+      title: main ? "Le bloc" : "Tibias · anti-périostite",
+      rounds: main && level >= 3 ? base + 1 : base,
+      rest: main ? (level >= 3 ? "1 min" : CIRCUIT_REST) : "30 s",
+      items: list.map((p) => ({ label: p!.label, perRound: main ? harder(p!.perRound, level) : p!.perRound, note: p!.note })),
+    });
+  }
+  return circuits;
 }

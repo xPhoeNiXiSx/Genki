@@ -11,9 +11,9 @@ import { normalizeMuscles, type MuscleKey } from "@/lib/muscles";
  */
 
 /** Les illustrations vivent dans `public/illustrations`. */
-const illustration = (slug: string) => `/illustrations/${slug}.jpg`;
+const illustration = (slug: string | undefined) => (slug ? `/illustrations/${slug}.jpg` : null);
 
-type PlanExercise = { label: string; image: string; name: string; muscles: MuscleKey[]; equipment: string | null; description: string };
+type PlanExercise = { label: string; image?: string; name: string; muscles: MuscleKey[]; equipment: string | null; description: string };
 
 const EXERCISES: PlanExercise[] = [
   {
@@ -120,6 +120,35 @@ const EXERCISES: PlanExercise[] = [
     equipment: null,
     description: "1. Pieds joints, petits sauts sur l'avant du pied, genoux souples.\n2. Réception douce et silencieuse, rebondis aussitôt.\n\nÀ surveiller : arrête au moindre choc dans les genoux ou les tibias.",
   },
+  // Routine anti-périostite.
+  {
+    label: "Relevés de pointes",
+    name: "Relevés de pointes",
+    muscles: ["tibias"],
+    equipment: null,
+    description: "1. Dos et fesses contre un mur, talons à 30 cm du mur, jambes tendues.\n2. Relève les pointes de pieds le plus haut possible, talons au sol.\n3. Redescends lentement, sans poser complètement l'avant du pied, et recommence.\n\nÀ surveiller : ça brûle sur le devant du tibia, c'est normal. Plus dur : sur une jambe.",
+  },
+  {
+    label: "Mollets genoux fléchis",
+    name: "Mollets genoux fléchis",
+    muscles: ["mollets"],
+    equipment: "Marche ou banc",
+    description: "1. Sur le bord d'une marche, sur une jambe, genou plié (environ 30°) et qui reste plié.\n2. Monte sur la pointe du pied, puis redescends lentement le talon sous le niveau de la marche.\n\nGenou plié, c'est le soléaire qui travaille : le muscle profond du mollet, qui amortit chaque foulée et soulage le tibia.",
+  },
+  {
+    label: "Marche talons puis pointes",
+    name: "Marche talons puis pointes",
+    muscles: ["tibias", "mollets"],
+    equipment: null,
+    description: "1. Marche 30 s sur les talons, pointes de pieds relevées.\n2. Puis 30 s sur la pointe des pieds, talons hauts.\n\nÀ surveiller : petits pas, buste droit. Pieds nus sur un sol souple, c'est encore mieux.",
+  },
+  {
+    label: "Abduction de hanche couché",
+    name: "Abduction de hanche couché",
+    muscles: ["fessiers"],
+    equipment: "Tapis",
+    description: "1. Allongé sur le côté, jambes tendues dans l'alignement du corps, tête posée sur le bras.\n2. Monte la jambe du dessus d'environ 40 cm, pointe de pied légèrement vers le bas, talon qui mène.\n3. Redescends lentement. Toutes les répétitions, puis change de côté.\n\nÀ surveiller : le bassin ne bascule pas en arrière. Ce muscle (moyen fessier) garde le genou et le pied dans l'axe à chaque foulée.",
+  },
 ];
 
 export type PlanExerciseLink = { id: string; muscles: MuscleKey[] };
@@ -135,7 +164,7 @@ export async function planExerciseLinks(): Promise<Map<string, PlanExerciseLink>
   for (const e of EXERCISES) {
     const found = byName.get(e.name.toLowerCase());
     if (found) {
-      if (!found.image_url) {
+      if (!found.image_url && e.image) {
         await query(`update exercises set image_url = $2 where id = $1`, [found.id, illustration(e.image)]);
       }
       links.set(e.label, { id: found.id, muscles: normalizeMuscles(found.muscles) });

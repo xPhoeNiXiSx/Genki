@@ -42,6 +42,10 @@ const ENTRIES: Entry[] = [
   { term: "Descentes de marche lentes", match: /descentes de marche/i, text: "Debout sur une marche, sur une jambe : descendre l'autre pied vers le sol en 3 s en pliant la jambe d'appui, l'effleurer sans s'y poser, remonter. Le genou reste dans l'axe du pied." },
   { term: "Chevilles à l'élastique", match: /élastique/i, text: "Assis, un élastique passé autour de l'avant du pied : pousser vers l'avant, tirer vers soi, puis vers l'intérieur et l'extérieur, contre la résistance. Sans élastique : marcher sur la pointe puis sur les talons." },
   { term: "Ischios", match: /ischios/i, text: "Les muscles de l'arrière de la cuisse. Ils freinent la jambe à chaque foulée ; les renforcer protège des claquages." },
+  { term: "Tibias · périostite", match: /tibias|périostite/i, text: "La périostite, c'est l'irritation de la membrane qui entoure le tibia, sur son bord intérieur : elle vient d'un volume qui monte trop vite et de muscles qui n'amortissent pas assez. La routine tibias renforce le jambier antérieur, le soléaire et la hanche. Si la douleur dépasse 3/10 en courant, persiste après ou se réveille au repos : on arrête de courir et on consulte (une fracture de fatigue est à écarter)." },
+  { term: "Relevés de pointes", match: /relevés de pointes/i, text: "Dos au mur, talons au sol : relever les pointes de pieds le plus haut possible, puis redescendre lentement. Ça renforce le muscle devant le tibia." },
+  { term: "Mollets genoux fléchis", match: /genoux fléchis/i, text: "Montées sur la pointe d'un pied au bord d'une marche, genou plié qui reste plié : c'est le soléaire, le muscle profond du mollet, qui travaille et amortit la foulée." },
+  { term: "Abduction de hanche", match: /abduction/i, text: "Allongé sur le côté, monter la jambe du dessus tendue, talon qui mène, puis redescendre lentement. Le moyen fessier garde le genou et le pied dans l'axe." },
   { term: "Sauts légers (pliométrie)", match: /sauts/i, text: "Petits sauts pieds joints, en restant sur l'avant du pied, réception souple et silencieuse. Ça rend la foulée plus réactive. Arrêter au moindre choc dans les genoux." },
 ];
 

@@ -20,6 +20,7 @@ export const MUSCLES = [
   { key: "quadriceps", label: "Quadriceps" },
   { key: "ischio-jambiers", label: "Ischio-jambiers" },
   { key: "mollets", label: "Mollets" },
+  { key: "tibias", label: "Tibias" },
 ] as const;
 
 export type MuscleKey = (typeof MUSCLES)[number]["key"];

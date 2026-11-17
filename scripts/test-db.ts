@@ -16,6 +16,7 @@ import {
   currentWeek,
   daysToRace,
   decideAdjustment,
+  renfoLevel,
   ensureAdjustment,
   ensurePlan,
   getPlanSession,
@@ -37,7 +38,7 @@ import { activeDays, formOf, freshnessText, mondayOf, paceGroups, planTotals, re
 import { fromIntervalsWellness, listWellness, saveWellness } from "../lib/wellness";
 import { bodySignals } from "../lib/plan";
 import { glossaryFor } from "../lib/plan-glossary";
-import { PLAN_WEEKS, plannedSessions, renfoCircuit } from "../lib/plan-data";
+import { PLAN_WEEKS, plannedSessions, renfoCircuits } from "../lib/plan-data";
 import { ensureSchema, isSchemaReady, query, runMigrations, setQueryRunner } from "../lib/db";
 import {
   MAX_FAILURES,
@@ -510,16 +511,24 @@ async function trainingPlan() {
   ok("chaque exercice de renfo a sa fiche dans la bibliothèque, créée une seule fois");
 
   for (const renfo of planned.filter((x) => x.kind === "renfo")) {
-    const circuit = renfoCircuit(renfo.blocks);
-    assert.ok(circuit, `renfo illisible en circuit : ${renfo.title}`);
-    assert.equal(circuit.rounds, 3);
-    assert.equal(circuit.items.length, renfo.blocks.length);
+    const circuits = renfoCircuits(renfo.blocks);
+    assert.ok(circuits, `renfo illisible en circuit : ${renfo.title}`);
+    assert.deepEqual(circuits.map((c) => [c.title, c.rounds]), [["Le bloc", 3], ["Tibias · anti-périostite", 2]]);
+    assert.equal(circuits[0].items.length + circuits[1].items.length, renfo.blocks.length);
+    assert.ok(circuits[1].items.every((item) => links.has(item.label)), "chaque exercice tibias a sa fiche");
   }
-  const circuitA = renfoCircuit(planned.find((x) => x.kind === "renfo")!.blocks)!;
-  assert.deepEqual(circuitA.items[1], { label: "Fentes avant", perRound: "10", note: "par jambe" });
-  assert.deepEqual(circuitA.items[4], { label: "Gainage face + côtés", perRound: "40 s", note: "face, puis chaque côté" });
-  assert.equal(renfoCircuit([{ label: "Libre", detail: "comme tu veux", duration: "5′" }]), null);
-  ok("chaque renfo se lit comme un bloc à faire en 3 tours, avec ce qu'il faut faire par tour");
+  const renfoA = planned.find((x) => x.kind === "renfo")!.blocks;
+  const [blockA, tibiasA] = renfoCircuits(renfoA)!;
+  assert.deepEqual(blockA.items[1], { label: "Fentes avant", perRound: "10", note: "par jambe" });
+  assert.deepEqual(blockA.items[4], { label: "Gainage face + côtés", perRound: "40 s", note: "face, puis chaque côté" });
+  assert.deepEqual(tibiasA.items[2], { label: "Marche talons puis pointes", perRound: "30 s", note: "talons, puis pointes" });
+  const [hard, hardTibias] = renfoCircuits(renfoA, 2)!;
+  assert.deepEqual([hard.rounds, hard.items[0].perRound, hard.items[4].perRound, hard.rest], [3, "20", "50 s", "1 min 30"]);
+  assert.equal(hardTibias.items[0].perRound, "20");
+  const [hardest] = renfoCircuits(renfoA, 3)!;
+  assert.deepEqual([hardest.rounds, hardest.rest], [4, "1 min"]);
+  assert.equal(renfoCircuits([{ label: "Libre", detail: "comme tu veux", duration: "5′" }]), null);
+  ok("chaque renfo se lit comme un bloc en 3 tours puis la routine tibias, plus dur selon le niveau");
 
   // intervals.icu : une activité se traduit, se range par type, ne s'importe qu'une fois.
   const run = fromIntervals({ id: "i42", name: "Sortie du dimanche", type: "TrailRun", source: "GARMIN_CONNECT", start_date_local: "2026-12-06T09:30:00", start_date: "2026-12-06T08:30:00Z", moving_time: 4980, elapsed_time: 5200, distance: 11234.5, total_elevation_gain: 96.4 })!;
@@ -578,6 +587,26 @@ async function trainingPlan() {
   assert.equal(decideAdjustment(3, [mk("course", "skipped"), mk("course", "skipped"), mk("course", "done", 3)], { tsb: -30 }).factor, 0.8);
   assert.equal(decideAdjustment(15, [], { tsb: -40, recentKm: 5 }).factor, 1);
   ok("la montre ajuste aussi le plan : volume d'avant le plan, fatigue accumulée, VFC et FC au repos");
+
+  const r = (feeling: number, t: number) => ({ ...week1[0], kind: "renfo", status: "done", feeling, doneAt: new Date(t) }) as typeof week1[0];
+  assert.deepEqual(renfoLevel([]), { level: 1, reason: null });
+  assert.equal(renfoLevel([r(5, 1)]).level, 2);
+  assert.equal(renfoLevel([r(3, 1)]).level, 1);
+  const top = renfoLevel([r(4, 1), r(5, 2), r(5, 3)]);
+  assert.equal(top.level, 3);
+  assert.match(top.reason ?? "", /sac à dos/);
+  assert.equal(renfoLevel([r(1, 3), r(5, 2)]).level, 1);
+  ok("le renfo monte d'un niveau après une séance facile, redescend après une séance dure");
+
+  // Un renfo pas encore fait suit le contenu actuel du plan ; un renfo fait garde le sien.
+  const renfos = (await listPlanSessions()).filter((x) => x.kind === "renfo");
+  const todoRenfo = renfos.find((x) => x.status === "todo")!;
+  const doneRenfo = renfos.find((x) => x.status === "done")!;
+  await query(`update plan_sessions set blocks = '[{"label":"Ancien","detail":"3 × 10","duration":"5′"}]' where id = any($1::uuid[])`, [[todoRenfo.id, doneRenfo.id]]);
+  const after = await listPlanSessions();
+  assert.ok(after.find((x) => x.id === todoRenfo.id)!.blocks.some((b) => b.group === "tibias"));
+  assert.equal(after.find((x) => x.id === doneRenfo.id)!.blocks[0].label, "Ancien");
+  ok("les renfos à venir reçoivent la routine tibias, les renfos faits gardent leur contenu");
 
   const footing = week1.find((x) => x.title === "Footing en endurance")!;
   const lighter = withAdjustment(footing, 0.8);

@@ -4,11 +4,11 @@ import { notFound } from "next/navigation";
 import { bestView } from "@/lib/anatomy";
 import { parisToday } from "@/lib/dates";
 import { getIntervalsConnection } from "@/lib/intervals";
-import { CIRCUIT_REST, PLAN_WEEKS, renfoCircuit } from "@/lib/plan-data";
+import { PLAN_WEEKS, RENFO_LEVELS, renfoCircuits } from "@/lib/plan-data";
 import { getWatchEntry } from "@/lib/plan-watch";
 import { planExerciseLinks, type PlanExerciseLink } from "@/lib/plan-exercises";
 import { glossaryFor } from "@/lib/plan-glossary";
-import { getPlanSession, listAdjustments, listPlanSessions, withAdjustment } from "@/lib/plan";
+import { getPlanSession, listAdjustments, listPlanSessions, renfoLevel, withAdjustment } from "@/lib/plan";
 
 import { databaseBlocker } from "../../db-screens";
 import { BodyMap } from "../../ui/body-map";
@@ -57,8 +57,11 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
   const session = withAdjustment(stored, adjustment?.factor);
   const links = session.kind === "renfo" ? await planExerciseLinks() : new Map<string, PlanExerciseLink>();
   const glossary = glossaryFor([session.title, session.summary, ...session.blocks.flatMap((b) => [b.label, b.detail])]);
-  const count = (await listPlanSessions()).filter((s) => s.week === session.week).length;
-  const circuit = session.kind === "renfo" ? renfoCircuit(session.blocks) : null;
+  const all = await listPlanSessions();
+  const level = renfoLevel(all);
+  const count = all.filter((s) => s.week === session.week).length;
+  const circuits = session.kind === "renfo" ? renfoCircuits(session.blocks, session.status === "todo" ? level.level : 1) : null;
+  const tibias = circuits?.[1] ?? null;
   const watchable = session.kind === "course" && session.status === "todo";
   const [watch, intervals] = watchable ? await Promise.all([getWatchEntry(session.id), getIntervalsConnection()]) : [null, null];
 
@@ -110,55 +113,69 @@ export default async function PlanSessionPage({ params }: { params: Promise<{ id
         </div>
       ) : null}
 
-      {circuit ? (
+      {circuits ? (
         <>
           <div style={{ marginTop: 20, padding: "16px 18px", borderRadius: 22, background: "var(--volt)", border: "1.5px solid var(--ink)", display: "grid", gap: 10 }}>
-            <span className="label" style={{ fontSize: 10 }}>Comment faire</span>
-            <span className="display" style={{ fontSize: 20, lineHeight: 1.15 }}>{circuit.rounds} tours du bloc complet</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span className="label" style={{ fontSize: 10 }}>Comment faire</span>
+              <span className="mono" style={{ fontSize: 11, padding: "2px 10px", borderRadius: 10, background: "var(--ink)", color: "var(--volt)" }}>niveau {level.level} / {RENFO_LEVELS}</span>
+            </div>
+            <span className="display" style={{ fontSize: 20, lineHeight: 1.15 }}>{circuits[0].rounds} tours du bloc{tibias ? ", puis les tibias" : " complet"}</span>
             <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.5 }}>
-              <li>Fais les {circuit.items.length} exercices à la suite, juste le temps de changer entre deux.</li>
-              <li>Récupère <strong>{CIRCUIT_REST}</strong>.</li>
-              <li>Recommence le bloc : {circuit.rounds} tours en tout.</li>
+              <li>Fais les {circuits[0].items.length} exercices du bloc à la suite, juste le temps de changer entre deux.</li>
+              <li>Récupère <strong>{circuits[0].rest}</strong>.</li>
+              <li>Recommence le bloc : {circuits[0].rounds} tours en tout.</li>
+              {tibias ? <li>Termine par la routine tibias : {tibias.rounds} tours, {tibias.rest} entre deux.</li> : null}
             </ol>
+            {session.status === "todo" && level.reason ? <span className="mono" style={{ fontSize: 11 }}>{level.reason}</span> : null}
           </div>
 
-          <span className="field-label">Le bloc</span>
-          <section aria-label={`Bloc d'exercices à faire ${circuit.rounds} fois`} style={{ border: "1.5px solid var(--ink)", borderRadius: 26, padding: "10px 8px 8px", display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
-              <span className="label">Boucle · {circuit.rounds} tours</span>
-              <span className="chip on" style={{ height: 28, fontSize: 13 }}>×{circuit.rounds}</span>
-            </div>
-            {circuit.items.map((item, i) => {
-              const link = links.get(item.label);
-              const content = (
-                <>
-                  {link ? (
-                    <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
+          {circuits.map((circuit, c) => (
+            <div key={circuit.title}>
+              <span className="field-label">{circuit.title}</span>
+              <section aria-label={`${circuit.title} : à faire ${circuit.rounds} fois`} style={{ border: "1.5px solid var(--ink)", borderRadius: 26, padding: "10px 8px 8px", display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
+                  <span className="label">Boucle · {circuit.rounds} tours</span>
+                  <span className="chip on" style={{ height: 28, fontSize: 13 }}>×{circuit.rounds}</span>
+                </div>
+                {circuit.items.map((item, i) => {
+                  const link = links.get(item.label);
+                  const content = (
+                    <>
+                      {link ? (
+                        <BodyMap view={bestView(link.muscles)} highlight={link.muscles} height={60} />
+                      ) : (
+                        <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: "var(--ink)", color: "var(--volt)", display: "grid", placeItems: "center", fontSize: 11 }}>{String(i + 1).padStart(2, "0")}</span>
+                      )}
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{item.label}</span>
+                        {item.note ? <span className="muted" style={{ fontSize: 12 }}>{item.note}</span> : null}
+                      </span>
+                      <span style={{ flex: "none", display: "grid", justifyItems: "end" }}>
+                        <span className="display" style={{ fontSize: 18, lineHeight: 1, whiteSpace: "nowrap" }}>{item.perRound}</span>
+                        <span className="mono muted" style={{ fontSize: 10 }}>par tour</span>
+                      </span>
+                      {link ? <Icon name="chevron" size={16} /> : null}
+                    </>
+                  );
+                  const style = { display: "flex", alignItems: "center", gap: 12, padding: link ? "6px 14px 6px 10px" : "12px 14px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" } as const;
+                  return link ? (
+                    <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={style}>{content}</Link>
                   ) : (
-                    <span className="mono" style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", background: "var(--ink)", color: "var(--volt)", display: "grid", placeItems: "center", fontSize: 11 }}>{String(i + 1).padStart(2, "0")}</span>
-                  )}
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{item.label}</span>
-                    {item.note ? <span className="muted" style={{ fontSize: 12 }}>{item.note}</span> : null}
-                  </span>
-                  <span style={{ flex: "none", display: "grid", justifyItems: "end" }}>
-                    <span className="display" style={{ fontSize: 18, lineHeight: 1, whiteSpace: "nowrap" }}>{item.perRound}</span>
-                    <span className="mono muted" style={{ fontSize: 10 }}>par tour</span>
-                  </span>
-                  {link ? <Icon name="chevron" size={16} /> : null}
-                </>
-              );
-              const style = { display: "flex", alignItems: "center", gap: 12, padding: link ? "6px 14px 6px 10px" : "12px 14px", borderRadius: 18, background: "var(--white)", border: "1px solid var(--line)" } as const;
-              return link ? (
-                <Link key={i} href={`/exercices/${link.id}?retour=/plan/${session.id}`} style={style}>{content}</Link>
-              ) : (
-                <div key={i} style={style}>{content}</div>
-              );
-            })}
-            <div className="mono" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 10, borderRadius: 18, border: "1.5px dashed rgba(26,26,29,.45)", fontSize: 12, textAlign: "center" }}>
-              ↻ récup {CIRCUIT_REST} · puis on reprend au 1er exercice
+                    <div key={i} style={style}>{content}</div>
+                  );
+                })}
+                <div className="mono" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 10, borderRadius: 18, border: "1.5px dashed rgba(26,26,29,.45)", fontSize: 12, textAlign: "center" }}>
+                  ↻ récup {circuit.rest} · puis on reprend au 1er exercice
+                </div>
+              </section>
+              {c > 0 ? (
+                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.45 }}>
+                  Douleur au tibia en courant ? Si elle dépasse 3/10, dure après la sortie ou se réveille au repos : on arrête de courir et on montre ça à un kiné ou un médecin (une fracture de fatigue est à écarter).
+                </p>
+              ) : null}
             </div>
-          </section>
+          ))}
           {links.size > 0 ? <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Touche un exercice pour voir comment le faire.</p> : null}
         </>
       ) : (
